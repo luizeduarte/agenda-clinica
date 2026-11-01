@@ -1,0 +1,226 @@
+PLANEJAMENTO - TRABALHO FINAL DE DESIGN DE SOFTWARE
+Tema 2: Agendamento de consultas em clinica universitaria
+
+Pergunta central:
+"Como este sistema deve ser organizado para atender aos requisitos atuais e
+permitir sua evolucao sem gerar dependencias desnecessarias?"
+
+requisitos -> responsabilidades -> design -> arquitetura -> codigo -> consequencias
+
+
+------------------------------------------------------------------------------
+FASE 1 - REQUISITOS E ASRs
+
+1. Contexto 
+  Clinica universitaria onde profissionais/estagiarios mantem agendas, pacientes
+  marcam, cancelam e reagendam consultas, com controle de conflitos de
+  horario e confirmacoes.
+
+2. Atores
+  - Paciente
+  - Profissional de saude
+  - Recepcionista/Secretaria
+
+3. Requisitos funcionais
+  RF1  Manter agenda de disponibilidade de um profissional
+  RF2  Consultar horarios disponiveis de um profissional ou de uma especialidade
+  RF3  Agendar consulta em um horario disponivel
+  RF4  Cancelar consulta (respeitando antecedencia minima)
+  RF5  Reagendar consulta (cancelar + agendar de forma atomica)
+  RF6  Impedir conflito de horario (profissional e paciente)
+  RF7  Confirmar consulta (paciente confirma apos lembrete)
+  RF8  Enviar notificacoes (agendamento, cancelamento, lembrete)
+  RF9  Bloquear periodos da agenda (ferias, reuniao, feriado)
+  RF10 Consultar historico de consultas de um paciente
+
+4. Restricoes relevantes
+  - Cancelamento so pode ser feito ate 24 horas antes da consulta
+  - Dados de saude: LGPD (acesso restrito, minimo de dados sensiveis)
+
+5. ASRs
+  ASR-1 Consistencia / integridade de agendamento (conflito de horario)
+    "Duas solicitacoes concorrentes para o mesmo slot de um profissional
+     NUNCA podem resultar em duas consultas confirmadas. Uma delas deve
+     receber erro de conflito."
+    Influencia: transacoes, restricao unica no banco, onde fica a regra.
+
+  ASR-2 Modificabilidade do canal de notificacao
+    "Trocar o canal de notificacao (e-mail -> WhatsApp/SMS) deve exigir
+     alteracao em no maximo 1 modulo e zero alteracoes nas
+     regras de agendamento."
+    Influencia: interface Notificador, inversao de dependencia.
+
+  ASR-4 Disponibilidade (isolamento da falha do notificador)
+    "Uma falha no envio da notificação nao deve impedir a consulta de ser
+     validada, persistida e confirmada ao usuário. A falha é registrada e 
+     fica pendente para reenvio, sem desfazer o agendamento"
+    Influência: notificador isolado por interface, tratamento de falha no 
+    caso de uso e escolha entre notificação síncrona com tratamento de 
+    erro ou assíncrona (fila/pendências).
+
+  ASR-5 Segurança (autenticação e autorização por papéis)
+    " O sistema deve identificar o usuário e executar a operação somente 
+     se o papel permitir. Caso contrário, nega sem alterar nada e registra 
+     a tentativa."
+    Influência : define onde a autorização é aplicada, como a identidade 
+    chega aos casos de uso e se o login é interno ou delegado.
+
+!Nota para o grupo: a autenticação pode ser interna ou delegada a um provedor 
+externo, como o login da universidade. Sugestão: isolar atrás de uma interface
+como feito com o Notificador. O enunciado diz que login completo não é necessário,
+salvo quando relevante para demonstrar uma decisão arquitetural.
+
+6. Justificar por que cada ASR influencia a arquitetura
+  Para cada ASR: ligar o ASR a uma decisao estrutural concreta
+
+------------------------------------------------------------------------------
+FASE 2 - MODELO DE DOMINIO E RESPONSABILIDADES
+
+1. Conceitos candidatos
+  Paciente, Profissional, Especialidade, Agenda (de um profissional),
+  Disponibilidade/HorarioDeAtendimento, Slot/Horario, Consulta,
+  StatusConsulta (AGENDADA, CONFIRMADA, CANCELADA, REALIZADA, FALTOU),
+  Bloqueio, Confirmacao, Notificacao, PoliticaDeCancelamento.
+
+2. Decisoes de responsabilidade a documentar (com GRASP)
+  - Information Expert: quem sabe se um horario esta livre? -> Agenda
+    (ela conhece consultas e bloqueios do profissional).
+  - Creator: quem cria Consulta? -> Agenda (ou servico de aplicacao que
+    delega para ela).
+  - Controller: agendamentoController (recebe agendar, cancelar, reagendar
+    e chama os casos de uso).
+  - Low Coupling / High Cohesion: dominio nao conhece banco nem e-mail.
+  - Polymorphism / Protected Variations: Notificador e Repositorios como
+    interfaces.
+  - Pure Fabrication: servicos de aplicacao e adaptadores de infraestrutura.
+
+3.3 SOLID
+  - SRP: Agenda cuida de disponibilidade; caso de uso orquestra; repositorio
+    persiste.
+  - OCP: PoliticaDeCancelamento como estrategia (novas regras sem alterar
+    o caso de uso).
+  - DIP: casos de uso dependem de interfaces (Notificador, ConsultaRepositorio).
+  - ISP: interfaces pequenas (Notificador so envia; RepositorioDeConsultas
+    so o necessario).
+  - LSP: SMSNotificador e EmailNotificador substituiveis entre si.
+
+3.4 Analise de coesao e acoplamento
+  Escrever uma tabela curta: modulo -> coesao (alta/media) -> dependencias
+  que ele conhece. Mostrar que o dominio nao depende de ninguem.
+
+------------------------------------------------------------------------------
+FASE 3 - ARQUITETURA, ALTERNATIVAS E ADRs
+
+1. Proposta recomendada:
+  Monolito modular + camadas (Apresentacao / Aplicacao / Dominio /
+  Infraestrutura) com dependencias apontando para o dominio, ou seja,
+  inspiracao Hexagonal:
+
+    apresentacao (CLI ou API/controllers)
+          |
+          v
+    aplicacao (casos de uso)  --usa-->  dominio (entidades, regras)
+          |
+          v (via interfaces/portas definidas no dominio/aplicacao)
+    infraestrutura (repositorio SQLite, EmailNotificador)
+
+  Modulos sugeridos: agenda, consultas, pacientes/profissionais (cadastro
+  minimo), notificacoes.
+
+  Explicitar COMO a arquitetura aparece no codigo: mapear cada 
+  camada/modulo para pastas e mostrar a regra de dependencia 
+  (ex.: "dominio nao importa nada de infra").
+
+2. Itens obrigatorios da secao "Proposta arquitetural"
+  [ ] Componentes/modulos e responsabilidades
+  [ ] Dependencias entre eles
+  [ ] Interfaces relevantes (portas)
+  [ ] Mecanismos de comunicacao (chamadas em processo; notificacao sincrona
+      ou assincrona - provavelmente assincrone pelo ASR 002)
+  [ ] Persistencia (SQLite/Postgres? esquema basico, restricao unica de slot)
+  [ ] Integracoes externas (notificador)
+  [ ] Decisoes de comunicacao
+  [ ] Documentacao de API, se houver API (endpoints principais; OpenAPI
+      gerado pelo FastAPI ajuda)
+
+3. Alternativas - minimo 2 alem da escolhida
+  A: Monolito simples (tudo em camadas ou scripts, sem separar dominio)
+  B: Monolito modular + hexagonal  <-- escolhida
+  C: Microsservicos (agenda, consultas, notificacoes separados)
+  Comparar em tabela: modificabilidade, desempenho, disponibilidade,
+  testabilidade, complexidade, implantacao, escalabilidade, custo de
+  desenvolvimento/operacao. Ligar a decisao final aos 3 ASRs.
+
+4. ADRs (minimo 3)
+  Formato de cada um: Contexto | Porblemas/Forcas Envolvidas | 
+  Alternativas | Decisao | Consequencias positivas | Consequencias 
+  negativas/custos/riscos
+
+  ADR-001 Monolito modular em vez de microsservicos
+  ADR-002 Isolamento do notificador por interface (porta/adaptador) e
+          estrategia de falha (sincrono com fallback x assincrono/fila)
+  ADR-003 Estrategia de persistencia e garantia de conflito de horario
+          (restricao unica + transacao x lock otimista)
+  ADR-004 Dominio isolado de infraestrutura (hexagonal) x
+          camadas tradicionais
+
+------------------------------------------------------------------------------
+5. FASE 4 - MODELAGEM UML
+
+Obrigatorios: classes, sequencia, comunicacao, componentes/pacotes.
+
+Conteudo sugerido:
+  - classes.puml: Paciente, Profissional, Agenda, Consulta, Bloqueio,
+    StatusConsulta, interfaces ConsultaRepositorio/AgendaRepositorio/
+    Notificador, casos de uso, implementacoes de infra (marcadas).
+  - sequencia.puml: Agendar Consulta (feliz) + fragmento alt para
+    "horario indisponivel/conflito" (+ opcional: falha do notificador).
+  - comunicacao.puml: mesmo cenario, com mensagens numeradas
+    entre objetos.
+  - componentes.puml: apresentacao, aplicacao, dominio, infra, banco,
+    notificador externo, com interfaces (provided/required).
+
+Checklist de consistencia:
+  [ ] Toda mensagem do diagrama de sequencia existe como metodo no diagrama
+      de classes, na classe correta
+  [ ] Nomes de classes/metodos iguais aos do codigo
+  [ ] Dependencias do diagrama de componentes batem com os imports reais
+  [ ] Diagrama de comunicacao mostra os mesmos participantes da sequencia
+
+
+------------------------------------------------------------------------------
+FASE 5 - PROTOTIPO
+
+Requisitos minimos do enunciado e planejamento de como cumprir:
+
+  1. Caso de uso que MODIFICA estado: AgendarConsulta
+     (opcional extra: CancelarConsulta/ReagendarConsulta)
+  2. Uma CONSULTA: ConsultarHorariosDisponiveis
+  3. Fluxo ALTERNATIVO/ERRO relevante: horario ja ocupado/bloqueado
+     (HorarioIndisponivelError), e/ou cancelamento fora do prazo
+  4. PERSISTENCIA: SQLite com restricao unica
+     (profissional_id, inicio) para consultas ativas
+  5. DEPENDENCIA EXTERNA simulada: Notificador
+
+Nao fazer (conforme secao 11 do enunciado): login completo, CRUD de tudo,
+painel admin, interface sofisticada, deploy em nuvem.
+
+
+------------------------------------------------------------------------------
+7. FASE 6 - ANALISE DE EVOLUCAO
+
+Pergunta: "Se uma das principais tecnologias ou integracoes precisasse ser
+substituida, quais partes seriam afetadas?" Escolher pelo menos 2 mudancas.
+Sugestao:
+
+  Mudanca 1: E-mail -> WhatsApp
+    Afetados: novo adaptador (WhatsAppNotificador), composicao (main),
+              possivelmente template de mensagem
+    Inalterados: dominio, casos de uso, repositorios, testes de regra
+    Decisoes que ajudam: interface Notificador, DIP
+    Decisoes que dificultam: se a mensagem tiver formato muito ligado a
+    e-mail (assunto, HTML) - mitigar com mensagem neutra.
+
+  Mudanca 2: SQLite -> PostgreSQL (ou outro mecanismo de persistencia)
+    Afetados: adaptador de repositorio, scripts de schema, configuracao
+    Inalterados: dominio, casos de uso
