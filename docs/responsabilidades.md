@@ -11,7 +11,7 @@ A distribuição de responsabilidades busca garantir:
 - **Modificabilidade:** alterações em tecnologias externas não devem exigir mudanças nas regras de negócio.
 - **Testabilidade:** regras e casos de uso podem ser testados independentemente do banco de dados ou de serviços externos.
 
-Para isso, adotaremos como proposta inicial um monólito modular, com separação entre domínio, aplicação, apresentação e infraestrutura, utilizando portas e adaptadores nas integrações.
+Para isso, a arquitetura adotada consiste em um monólito modular, com separação entre domínio, aplicação, apresentação e infraestrutura, utilizando portas e adaptadores nas integrações.
 
 ## 2. Distribuição de responsabilidades
 
@@ -23,13 +23,13 @@ Contém os conceitos e as regras essenciais do sistema, independentemente das te
 |---|---|
 | `Paciente` | Representar o paciente e suas informações essenciais. |
 | `Profissional` | Representar o profissional responsável pelos atendimentos e sua especialidade. |
-| `Agenda` | Avaliar a disponibilidade de horários, considerando consultas existentes, períodos de atendimento e bloqueios. |
+| `Agenda` | Avaliar a disponibilidade de horários **do profissional**, considerando suas consultas, períodos de atendimento e bloqueios. |
 | `Consulta` | Representar o agendamento, seus participantes, período e estado, controlando suas transições válidas. |
 | `HorarioAtendimento` | Representar os períodos regulares de atendimento do profissional. |
 | `Bloqueio` | Representar indisponibilidades da agenda, como férias e reuniões. |
 | `Especialidade` | Representar a área de atendimento do profissional. |
 
-A classe `Agenda` concentra as regras relacionadas à disponibilidade, enquanto `Consulta` concentra as informações e comportamentos próprios de um agendamento.
+A classe `Agenda` concentra as regras de disponibilidade **do profissional**, enquanto `Consulta` concentra as informações e comportamentos próprios de um agendamento. A disponibilidade do **paciente** é verificada pelo caso de uso `AgendarConsulta` por meio das consultas ativas recuperadas do repositório.
 
 A verificação realizada por `Agenda` considera os dados disponibilizados a ela, sem consultar diretamente o banco de dados.
 
@@ -39,7 +39,7 @@ Coordena os casos de uso e a interação entre o domínio e as interfaces necess
 
 | Caso de uso | Responsabilidade |
 |---|---|
-| `AgendarConsulta` | Coordenar a validação de disponibilidade, criação da consulta, persistência e registro da notificação pendente. |
+| `AgendarConsulta` | Coordenar a verificação da disponibilidade do profissional **e do paciente**, a criação da consulta, a persistência e o registro da notificação pendente. |
 | `ConsultarDisponibilidade` | Obter as informações necessárias e apresentar os horários disponíveis de um profissional. |
 | `CancelarConsulta` | Verificar a política de cancelamento e coordenar a alteração do estado da consulta. |
 | `ReagendarConsulta` | Coordenar a alteração de horário, garantindo que a operação preserve a consulta original em caso de falha. |
@@ -63,7 +63,7 @@ Não deve implementar regras de disponibilidade nem acessar diretamente o banco 
 
 | Componente | Responsabilidade |
 |---|---|
-| `ConsultaRepositorio` | Definir operações de acesso e persistência de consultas. |
+| `ConsultaRepositorio` | Definir operações de acesso e persistência de consultas, incluindo a consulta de agendamentos ativos de um paciente em determinado horário. |
 | `AgendaRepositorio` | Definir operações para obter agendas e seus dados de disponibilidade. |
 | `NotificacaoPendenteRepositorio` | Definir operações para registrar e recuperar notificações pendentes. |
 | `UnidadeDeTrabalho` | Coordenar a transação envolvendo as alterações de persistência que devem ocorrer atomicamente. |
@@ -75,7 +75,7 @@ As interfaces representam contratos utilizados pela aplicação. As implementaç
 
 Um componente de processamento de notificações poderá consultar as pendências registradas e utilizar a interface `Notificador` para realizar os envios e tratar falhas.
 
-A autenticação universitária, caso seja adotada como restrição do projeto, também poderá ser isolada por uma interface e simulada no protótipo.
+A autenticação de profissionais e estagiários será realizada por meio do serviço da universidade, isolado pela interface ServicoAutenticacao. No protótipo, a integração será representada pelo adaptador AutenticacaoFake.
 
 ## 3. Aplicação dos princípios GRASP
 
@@ -83,7 +83,7 @@ A autenticação universitária, caso seja adotada como restrição do projeto, 
 
 **Aplicação: `Agenda`**
 
-A responsabilidade de avaliar a disponibilidade é atribuída à `Agenda`, pois ela possui as informações e regras necessárias para considerar horários de atendimento, bloqueios e consultas existentes.
+A responsabilidade de avaliar a disponibilidade **do profissional** é atribuída à `Agenda`, pois ela possui as informações e regras necessárias para considerar horários de atendimento, bloqueios e consultas desse profissional. Já a verificação de conflito do **paciente** é coordenada por `AgendarConsulta`, com informações obtidas pelo `ConsultaRepositorio`.
 
 Isso evita que a lógica de disponibilidade seja espalhada entre controllers, repositórios e casos de uso.
 
@@ -193,7 +193,7 @@ O principal caso de uso seguirá, conceitualmente, as seguintes etapas:
 
 1. O `AgendamentoController` recebe a solicitação.
 2. O caso de uso `AgendarConsulta` obtém as informações necessárias por meio das interfaces de repositório.
-3. A `Agenda` avalia a disponibilidade conforme as regras de domínio.
+3. A `Agenda` avalia a disponibilidade do profissional, enquanto `AgendarConsulta` verifica, via `ConsultaRepositorio`, se o paciente já possui uma consulta ativa no mesmo slot.
 4. O caso de uso coordena a criação da `Consulta`.
 5. A persistência garante atomicamente a reserva do horário e o registro de uma notificação pendente.
 6. A aplicação retorna o resultado do agendamento.
@@ -201,7 +201,7 @@ O principal caso de uso seguirá, conceitualmente, as seguintes etapas:
 
 A validação realizada pelo domínio não é suficiente, isoladamente, para garantir a consistência em situações de concorrência.
 
-A infraestrutura de persistência deverá aplicar transações e mecanismos adequados para impedir consultas conflitantes, tanto para o profissional quanto para o paciente.
+A infraestrutura de persistência deverá aplicar transações e mecanismos adequados para impedir consultas conflitantes, tanto para o profissional quanto para o paciente. Com slots fixos de 30 minutos alinhados, serão utilizadas restrições únicas condicionadas às consultas ativas por `(profissional_id, inicio)` e por `(paciente_id, inicio)`, além da validação dos períodos bloqueados durante a operação.
 
 Em caso de conflito, o agendamento deverá falhar sem gerar uma consulta ou notificação pendente indevida.
 
@@ -209,7 +209,7 @@ Em caso de conflito, o agendamento deverá falhar sem gerar uma consulta ou noti
 
 A distribuição proposta busca atender principalmente aos três requisitos arquiteturalmente significativos selecionados:
 
-**ASR-01 - Consistência:** as regras de disponibilidade são modeladas no domínio, enquanto a persistência garante a atomicidade necessária para impedir agendamentos concorrentes conflitantes.
+**ASR-01 - Consistência:** a `Agenda` avalia disponibilidade do profissional; `AgendarConsulta` coordena a verificação de conflitos do paciente; e a persistência garante a atomicidade necessária para impedir agendamentos concorrentes conflitantes de ambos.
 
 **ASR-02 - Modificabilidade:** interfaces de notificação e persistência permitem substituir implementações sem alterar as regras centrais do sistema.
 

@@ -29,10 +29,10 @@ Representa o profissional de saúde responsável pelos atendimentos.
 **Relacionamentos:** um profissional possui uma agenda e pode realizar várias consultas.
 
 ### Agenda
-Representa a organização dos horários de atendimento de um profissional.
+Representa a organização dos horários de atendimento de **um profissional**. Sua responsabilidade sobre disponibilidade diz respeito à agenda desse profissional; os conflitos do paciente são verificados durante o caso de uso de agendamento.
 
 **Responsabilidades:**
-- Determinar a disponibilidade dos horários.
+- Determinar a disponibilidade dos horários **do profissional**.
 - Considerar consultas existentes e períodos bloqueados.
 - Aplicar as regras de disponibilidade do domínio.
 
@@ -91,13 +91,13 @@ Permite identificar e consultar profissionais por especialidade.
 
 **RN01 - Disponibilidade:** uma consulta só pode ser agendada dentro de um horário de atendimento do profissional.
 
-**RN02 - Conflitos:** não podem existir consultas ativas com horários sobrepostos para o mesmo profissional ou paciente.
+**RN02 - Conflitos:** não podem existir consultas ativas com horários sobrepostos para o mesmo profissional **ou para o mesmo paciente**. Consultas `AGENDADA` e `CONFIRMADA` ocupam o horário, independentemente de o paciente já ter confirmado sua presença.
 
 **RN03 - Bloqueios:** horários bloqueados não podem receber novos agendamentos.
 
-**RN04 - Duração:** inicialmente, as consultas terão duração fixa de 30 minutos, utilizando horários padronizados e alinhados à grade da agenda.
+**RN04 - Duração:** as consultas terão duração fixa de 30 minutos, utilizando horários padronizados e alinhados à grade da agenda.
 
-**RN05 - Cancelamento:** o cancelamento deve respeitar uma antecedência mínima de 24 horas, conforme política inicialmente proposta.
+**RN05 - Cancelamento:** o cancelamento deve respeitar uma antecedência mínima de 24 horas.
 
 **RN06 - Reagendamento:** a alteração de horário deve preservar a consulta original caso o novo agendamento não possa ser concluído.
 
@@ -105,11 +105,11 @@ Permite identificar e consultar profissionais por especialidade.
 
 ## 5. Consistência dos Agendamentos
 
-A disponibilidade poderá ser avaliada pelas regras da Agenda, considerando consultas existentes, horários de atendimento e bloqueios.
+A `Agenda` avalia a disponibilidade do **profissional**, considerando suas consultas existentes, horários de atendimento e bloqueios. O caso de uso `AgendarConsulta` também consulta, via `ConsultaRepositorio`, os agendamentos ativos do **paciente**, pois o paciente pode ter outra consulta no mesmo horário com um profissional diferente.
 
 Entretanto, a verificação de disponibilidade, isoladamente, não garante a ausência de conflitos em solicitações concorrentes.
 
-Portanto, a implementação deverá garantir que a ocupação de um horário ocorra de maneira atômica, utilizando transações e restrições adequadas na persistência.
+Portanto, a implementação deverá garantir que a ocupação de um horário ocorra de maneira atômica, utilizando transações e restrições adequadas na persistência **para profissional e paciente**. Com slots de 30 minutos alinhados, a proposta é impedir duplicidade de `(profissional_id, inicio)` e de `(paciente_id, inicio)` entre consultas ativas, além de validar bloqueios no fluxo transacional.
 
 Essa decisão atende ao ASR de consistência dos agendamentos, impedindo que solicitações simultâneas produzam reservas conflitantes.
 
