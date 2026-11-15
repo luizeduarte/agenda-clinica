@@ -1,14 +1,14 @@
-# Modelo de Responsabilidades e Princípios de Design
+# Modelo de Domínio, Responsabilidades e Princípios de Design
 
 ## 1. Visão geral
 
-O sistema de agendamento de consultas será organizado de modo a separar as regras de negócio da coordenação dos casos de uso e das tecnologias de infraestrutura.
+O sistema de agendamento de consultas será organizado de modo a separar as regras de negócio da coordenação dos casos de uso e das tecnologias de infraestrutura. Este documento consolida o modelo de domínio (conceitos, atributos, estados e relacionamentos) e a distribuição de responsabilidades entre camadas e componentes.
 
 A distribuição de responsabilidades busca garantir:
 
 - **Alta coesão:** cada classe ou módulo concentra responsabilidades relacionadas.
 - **Baixo acoplamento:** os componentes dependem o mínimo possível de detalhes de outros componentes.
-- **Modificabilidade:** alterações em tecnologias externas não devem exigir mudanças nas regras de negócio.
+- **Modificabilidade:** alterações em tecnologias externas ou em regras isoladas (como políticas de cancelamento ou formato de slots) não devem se espalhar pelo sistema.
 - **Testabilidade:** regras e casos de uso podem ser testados independentemente do banco de dados ou de serviços externos.
 
 Para isso, a arquitetura adotada consiste em um monólito modular, com separação entre domínio, aplicação, apresentação e infraestrutura, utilizando portas e adaptadores nas integrações.
@@ -17,208 +17,219 @@ Para isso, a arquitetura adotada consiste em um monólito modular, com separaç�
 
 ### 2.1. Camada de domínio
 
-Contém os conceitos e as regras essenciais do sistema, independentemente das tecnologias utilizadas.
+Contém os conceitos, estados, relacionamentos e regras essenciais do sistema, independentemente das tecnologias utilizadas.
 
-| Classe | Responsabilidade |
-|---|---|
-| `Paciente` | Representar o paciente e suas informações essenciais. |
-| `Profissional` | Representar o profissional responsável pelos atendimentos e sua especialidade. |
-| `Agenda` | Avaliar a disponibilidade de horários **do profissional**, considerando suas consultas, períodos de atendimento e bloqueios. |
-| `Consulta` | Representar o agendamento, seus participantes, período e estado, controlando suas transições válidas. |
-| `HorarioAtendimento` | Representar os períodos regulares de atendimento do profissional. |
-| `Bloqueio` | Representar indisponibilidades da agenda, como férias e reuniões. |
-| `Especialidade` | Representar a área de atendimento do profissional. |
+| Classe / Conceito | Atributos principais | Responsabilidade |
+|---|---|---|
+| `Paciente` | `id`, `nome`, `email` | Representar o paciente atendido na clínica e suas informações essenciais para identificação e notificação. |
+| `Profissional` | `id`, `nome`, `especialidade` | Representar o profissional de saúde ou estagiário responsável pelos atendimentos e sua área de atuação. |
+| `Especialidade` | `id`, `nome` | Representar a área de atendimento da clínica (ex.: Clínica Médica, Pediatria, Odontologia), permitindo consultar profissionais por área e aplicar políticas específicas. |
+| `Slot` (`PeriodoConsulta`) | `inicio`, `fim` | Objeto de valor que representa o período `[inicio, fim)` de uma consulta, encapsulando o alinhamento à grade de 30 minutos e o cálculo de sobreposição de horários (isolando a lógica temporal caso o modelo evolua para slots dinâmicos). |
+| `AgendaProfissional` | `profissional_id`, `horarios_atendimento`, `bloqueios`, `consultas` | Avaliar a disponibilidade de horários **do profissional**, considerando seus períodos de atendimento, bloqueios datados e consultas ativas. |
+| `AgendaPaciente` | `paciente_id`, `consultas` | Avaliar a disponibilidade **do paciente** no domínio, impedindo sobreposição de consultas ativas em quaisquer profissionais (RN03) e validando o limite máximo de consultas ativas permitidas (RN08). |
+| `Consulta` | `id`, `paciente_id`, `profissional_id`, `slot` (`inicio`, `fim`), `status` | Representar o agendamento entre paciente e profissional, mantendo seus participantes, período e estado, além de controlar as transições válidas. |
+| `HorarioAtendimento` | `dia_semana`, `hora_inicio`, `hora_fim` | Representar os períodos **semanais recorrentes** de atendimento configurados individualmente para cada profissional (ex.: terças-feiras, das 08:00 às 12:00). |
+| `Bloqueio` | `id`, `inicio`, `fim`, `motivo` | Representar **exceções datadas** no calendário em que a agenda fica indisponível (ex.: férias, feriados, reuniões), diferenciando-se de `HorarioAtendimento` por tratar ocorrências pontuais em datas específicas em vez da grade semanal recorrente. |
+| `PoliticaDeCancelamento` | — (estratégia) | Encapsular a regra de antecedência mínima para cancelamento de consultas (24 horas padrão; 72 horas para Odontologia/Dentista; isenção de trava quando o cancelamento parte do profissional). |
 
-A classe `Agenda` concentra as regras de disponibilidade **do profissional**, enquanto `Consulta` concentra as informações e comportamentos próprios de um agendamento. A disponibilidade do **paciente** é verificada pelo caso de uso `AgendarConsulta` por meio das consultas ativas recuperadas do repositório.
+#### Estados possíveis de `Consulta`
 
-A verificação realizada por `Agenda` considera os dados disponibilizados a ela, sem consultar diretamente o banco de dados.
+- `AGENDADA`: agendamento registrado e ativo (ocupa o slot), aguardando confirmação do paciente.
+- `CONFIRMADA`: agendamento ativo e confirmado pelo paciente (ocupa o slot).
+- `CANCELADA`: agendamento cancelado; libera o slot para novos agendamentos.
+- `REALIZADA`: atendimento concluído.
+- `FALTOU`: paciente não compareceu ao atendimento.
+
+#### Relacionamentos principais do domínio
+
+- Um `Paciente` possui uma `AgendaPaciente` e pode possuir zero ou várias `Consultas`.
+- Um `Profissional` está associado a uma `Especialidade`, possui uma `AgendaProfissional` e pode realizar zero ou várias `Consultas`.
+- Cada `Consulta` vincula exatamente um `Paciente`, um `Profissional` e um `Slot` (`PeriodoConsulta`).
+- Uma `AgendaProfissional` agrega os registros recorrentes de `HorarioAtendimento` do profissional, suas `Consultas` e os `Bloqueio`s datados aplicáveis (individuais ou coletivos, como feriados).
+
+Tanto `AgendaProfissional` quanto `AgendaPaciente` avaliam regras inteiramente em memória a partir dos dados fornecidos a elas, sem consultar diretamente o banco de dados. Retirar a checagem de disponibilidade e de limites do paciente de dentro do caso de uso `AgendarConsulta` e colocá-la em `AgendaPaciente` evita acoplamento da camada de aplicação às regras de conflito.
 
 ### 2.2. Camada de aplicação
 
-Coordena os casos de uso e a interação entre o domínio e as interfaces necessárias.
+Coordena os casos de uso e a interação entre as entidades/serviços do domínio e as portas de infraestrutura necessárias.
 
-| Caso de uso | Responsabilidade |
-|---|---|
-| `AgendarConsulta` | Coordenar a verificação da disponibilidade do profissional **e do paciente**, a criação da consulta, a persistência e o registro da notificação pendente. |
-| `ConsultarDisponibilidade` | Obter as informações necessárias e apresentar os horários disponíveis de um profissional. |
-| `CancelarConsulta` | Verificar a política de cancelamento e coordenar a alteração do estado da consulta. |
-| `ReagendarConsulta` | Coordenar a alteração de horário, garantindo que a operação preserve a consulta original em caso de falha. |
-| `ConfirmarConsulta` | Coordenar a confirmação de uma consulta previamente agendada. |
+| Caso de uso | Requisito(s) | Responsabilidade |
+|---|---|---|
+| `ConfigurarHorarioAtendimento` | RF01 | Coordenar o cadastro ou atualização dos períodos semanais de atendimento de um profissional. |
+| `ConsultarDisponibilidade` | RF02 | Obter os dados necessários e listar os slots disponíveis de um profissional específico ou filtrados por uma especialidade. |
+| `AgendarConsulta` | RF03, RF06, RF08 | Coordenar a validação do `Slot`, a verificação de disponibilidade em `AgendaProfissional` e `AgendaPaciente`, a criação da `Consulta`, sua persistência atômica e o registro da notificação pendente. |
+| `CancelarConsulta` | RF04, RF08 | Obter a consulta, validar a `PoliticaDeCancelamento` adequada ao ator e à especialidade, alterar o estado da consulta para `CANCELADA` e registrar a notificação pendente. |
+| `ReagendarConsulta` | RF05, RF06, RF08 | Coordenar a alteração de horário, liberando o slot original e reservando o novo na mesma transação, preservando a consulta original em caso de conflito ou falha. |
+| `ConfirmarConsulta` | RF07 | Registrar a confirmação do paciente em uma consulta `AGENDADA`, alterando seu estado para `CONFIRMADA`. |
+| `RegistrarBloqueio` | RF09 | Registrar períodos datados de indisponibilidade (férias, feriados, reuniões) na agenda do profissional ou de forma coletiva. |
+| `ListarConsultas` | RF10 | Consultar e retornar o histórico de consultas de um paciente ou a lista de agendamentos de um profissional. |
 
-O protótipo priorizará `AgendarConsulta` e `ConsultarDisponibilidade`. Os demais casos de uso poderão ser documentados e implementados posteriormente.
+O protótipo priorizará `AgendarConsulta` e `ConsultarDisponibilidade`. Os demais casos de uso permanecem especificados para evolução incremental.
 
-Os casos de uso não devem conter SQL, detalhes de HTTP ou lógica específica de envio de e-mails.
+Os casos de uso não devem conter SQL, detalhes de HTTP ou lógica específica de envio de notificações.
 
 ### 2.3. Apresentação e infraestrutura
 
 **Apresentação**
 
-O `AgendamentoController` recebe requisições da API, valida os dados de entrada e encaminha as operações aos casos de uso correspondentes.
+O `AgendamentoController` recebe requisições da API REST, valida o formato dos dados de entrada, obtém o usuário autenticado (quando aplicável via `ServicoAutenticacao`) e encaminha as operações aos casos de uso correspondentes.
 
 Também é responsável por transformar os resultados e erros da aplicação em respostas HTTP adequadas.
 
-Não deve implementar regras de disponibilidade nem acessar diretamente o banco de dados.
+Não deve implementar regras de disponibilidade ou cancelamento, nem acessar diretamente o banco de dados.
 
 **Portas e adaptadores**
 
-| Componente | Responsabilidade |
-|---|---|
-| `ConsultaRepositorio` | Definir operações de acesso e persistência de consultas, incluindo a consulta de agendamentos ativos de um paciente em determinado horário. |
-| `AgendaRepositorio` | Definir operações para obter agendas e seus dados de disponibilidade. |
-| `NotificacaoPendenteRepositorio` | Definir operações para registrar e recuperar notificações pendentes. |
-| `UnidadeDeTrabalho` | Coordenar a transação envolvendo as alterações de persistência que devem ocorrer atomicamente. |
-| `Notificador` | Definir o contrato para envio de notificações, independentemente do canal utilizado. |
-| `SQLiteConsultaRepositorio` | Implementar a persistência de consultas utilizando SQLite. |
-| `NotificadorFake` | Simular o envio de notificações durante o desenvolvimento e os testes. |
+| Componente | Tipo | Responsabilidade |
+|---|---|---|
+| `ConsultaRepositorio` | Porta (Interface) | Definir operações de persistência e recuperação de consultas (por ID, por profissional ou por paciente), sem executar regras de negócio. |
+| `AgendaRepositorio` | Porta (Interface) | Definir operações de persistência e leitura de horários de atendimento e bloqueios. |
+| `PacienteRepositorio` | Porta (Interface) | Definir operações de leitura dos dados essenciais do paciente para correlação com agendas e consultas. |
+| `ProfissionalRepositorio` | Porta (Interface) | Definir operações de leitura de profissionais e suas especialidades (incluindo consulta por especialidade). |
+| `NotificacaoPendenteRepositorio` | Porta (Interface) | Definir operações para registrar, consultar e atualizar o estado de notificações pendentes. |
+| `UnidadeDeTrabalho` | Porta (Interface) | Coordenar uma transação única compartilhada pelos repositórios cujas gravações precisam ocorrer atomicamente. |
+| `Notificador` | Porta (Interface) | Definir o contrato para envio de notificações, independentemente do canal utilizado. |
+| `ServicoAutenticacao` | Porta (Interface) | Definir o contrato de identificação do usuário e seu papel (incluindo autenticação universitária de profissionais e estagiários). |
+| `SQLiteConsultaRepositorio` | Adaptador (Infraestrutura) | Implementar `ConsultaRepositorio` utilizando SQLite. |
+| `SQLiteAgendaRepositorio` | Adaptador (Infraestrutura) | Implementar `AgendaRepositorio` utilizando SQLite. |
+| `SQLitePacienteRepositorio` | Adaptador (Infraestrutura) | Implementar `PacienteRepositorio` utilizando SQLite. |
+| `SQLiteProfissionalRepositorio` | Adaptador (Infraestrutura) | Implementar `ProfissionalRepositorio` utilizando SQLite. |
+| `SQLiteNotificacaoPendenteRepositorio` | Adaptador (Infraestrutura) | Implementar `NotificacaoPendenteRepositorio` utilizando SQLite sobre a conexão da unidade de trabalho. |
+| `SQLiteUnidadeDeTrabalho` | Adaptador (Infraestrutura) | Implementar `UnidadeDeTrabalho` gerenciando a conexão e a transação (`BEGIN IMMEDIATE`, commit e rollback) no SQLite. |
+| `NotificadorFake` | Adaptador (Infraestrutura) | Simular o envio de notificações durante o desenvolvimento e os testes. |
+| `ServicoAutenticacaoFake` | Adaptador (Infraestrutura) | Simular o serviço de autenticação da universidade durante o protótipo. |
 
 As interfaces representam contratos utilizados pela aplicação. As implementações concretas pertencem à infraestrutura.
 
-Um componente de processamento de notificações poderá consultar as pendências registradas e utilizar a interface `Notificador` para realizar os envios e tratar falhas.
-
-A autenticação de profissionais e estagiários será realizada por meio do serviço da universidade, isolado pela interface ServicoAutenticacao. No protótipo, a integração será representada pelo adaptador AutenticacaoFake.
+Um componente de processamento de notificações consulta as pendências via `NotificacaoPendenteRepositorio` e utiliza a interface `Notificador` para realizar os envios e registrar eventuais falhas para reenvio.
 
 ## 3. Aplicação dos princípios GRASP
 
 ### 3.1. Information Expert
 
-**Aplicação: `Agenda`**
+**Aplicação: `AgendaProfissional`, `AgendaPaciente`, `Slot` e `Consulta`**
 
-A responsabilidade de avaliar a disponibilidade **do profissional** é atribuída à `Agenda`, pois ela possui as informações e regras necessárias para considerar horários de atendimento, bloqueios e consultas desse profissional. Já a verificação de conflito do **paciente** é coordenada por `AgendarConsulta`, com informações obtidas pelo `ConsultaRepositorio`.
+- A responsabilidade de avaliar a disponibilidade **do profissional** é atribuída à `AgendaProfissional`, pois ela conhece seus horários de atendimento, bloqueios e consultas.
+- A responsabilidade de avaliar conflitos e limites **do paciente** é atribuída à `AgendaPaciente`, pois ela reúne as consultas ativas do paciente e as regras de sobreposição e limite diário/por especialidade.
+- O objeto de valor `Slot` concentra o conhecimento sobre alinhamento à grade e interseção temporal.
+- A entidade `Consulta` concentra a validação de suas transições de estado.
 
-Isso evita que a lógica de disponibilidade seja espalhada entre controllers, repositórios e casos de uso.
-
-Entretanto, a verificação de disponibilidade não substitui o controle transacional necessário para impedir reservas concorrentes.
+Isso evita que regras de disponibilidade e restrições de agenda sejam espalhadas entre controllers, repositórios e casos de uso. Entretanto, a verificação em memória não substitui o controle transacional necessário para impedir reservas concorrentes.
 
 ### 3.2. Controller
 
 **Aplicação: `AgendamentoController`**
 
-O controller recebe as solicitações externas e delega sua execução aos casos de uso apropriados.
+O controller recebe as solicitações externas HTTP e delega sua execução aos casos de uso apropriados.
 
 Por exemplo:
 
 `AgendamentoController -> AgendarConsulta`
 
-Assim, a camada de apresentação não concentra regras de negócio, facilitando a inclusão futura de outras interfaces.
+Assim, a camada de apresentação não concentra regras de negócio, facilitando a inclusão futura de outras interfaces (como aplicativo mobile ou interface web).
 
 ### 3.3. Creator
 
 **Aplicação: criação de `Consulta` no fluxo de agendamento**
 
-O caso de uso `AgendarConsulta` reúne os dados necessários e coordena a criação da consulta, após a verificação das regras de disponibilidade.
+O caso de uso `AgendarConsulta` reúne os dados necessários e coordena a criação da consulta após a aprovação de `Slot`, `AgendaProfissional` e `AgendaPaciente`.
 
-A instanciação pode ocorrer por meio de um construtor ou método de fábrica da própria entidade `Consulta`, sem necessidade de criar uma classe adicional apenas para essa operação.
-
-A responsabilidade pela criação é distinta da responsabilidade pela persistência.
+A instanciação ocorre por meio do construtor ou método de fábrica da própria entidade `Consulta` (ou delegada pela agenda), iniciando no estado `AGENDADA`, sem necessidade de uma classe fábrica separada para essa operação.
 
 ### 3.4. Low Coupling e High Cohesion
 
-As responsabilidades são separadas conforme seus objetivos:
+As responsabilidades são separadas conforme seus motivos de mudança:
 
-- `Agenda` concentra regras de disponibilidade.
+- `AgendaProfissional` concentra disponibilidade do profissional.
+- `AgendaPaciente` concentra conflitos e limites do paciente.
+- `Slot` isola o modelo temporal dos horários.
+- `PoliticaDeCancelamento` isola prazos de cancelamento por perfil/especialidade.
 - `Consulta` concentra o estado e o comportamento do agendamento.
-- Os casos de uso coordenam operações.
-- Os repositórios implementam o acesso aos dados.
-- Os adaptadores de notificação realizam a comunicação externa.
+- Os casos de uso apenas orquestram fluxos entre domínio e portas.
+- Os repositórios implementam o acesso aos dados de forma segregada por recurso.
+- Os adaptadores externos encapsulam comunicação e autenticação.
 
-Essa divisão reduz dependências desnecessárias e facilita a manutenção dos componentes.
+Essa divisão reduz dependências desnecessárias e mantém alterações localizadas.
 
 ### 3.5. Protected Variations e Indirection
 
-**Aplicação: `Notificador` e interfaces de repositório**
+**Aplicação: `Notificador`, `ServicoAutenticacao`, `PoliticaDeCancelamento`, `Slot` e interfaces de repositório**
 
-O sistema não deve depender diretamente de um serviço específico de e-mail ou de uma implementação concreta de persistência.
+O sistema não depende diretamente de um provedor de e-mail, do serviço real da universidade ou do SQLite. Além disso, variações previstas de regras de negócio — como prazos distintos de cancelamento (`PoliticaDeCancelamento`) ou evolução de grade fixa para horários dinâmicos (`Slot`) — ficam protegidas atrás de contratos e objetos de domínio bem definidos.
 
-Utilizamos interfaces para intermediar essas dependências e proteger as regras de negócio de mudanças tecnológicas.
-
-Por exemplo, substituir `NotificadorFake` por `EmailNotificador` ou `WhatsAppNotificador` não deve exigir alterações nas regras de agendamento, desde que as implementações respeitem o contrato.
+Substituir `NotificadorFake` por `EmailNotificador` ou `WhatsAppNotificador` exige apenas um novo adaptador e ajuste na composição das dependências.
 
 ### 3.6. Pure Fabrication
 
-**Aplicação: repositórios e serviços de aplicação**
+**Aplicação: repositórios, `UnidadeDeTrabalho` e casos de uso**
 
-Componentes como repositórios não representam necessariamente entidades naturais do domínio da clínica.
-
-Eles são introduzidos para organizar responsabilidades técnicas, evitar que entidades de domínio acumulem tarefas de infraestrutura e favorecer baixo acoplamento e alta coesão.
+Componentes como repositórios e `UnidadeDeTrabalho` não representam entidades naturais do domínio da clínica, mas são introduzidos para coordenar persistência e transações sem contaminar entidades de domínio com detalhes técnicos de SQL.
 
 ## 4. Aplicação dos princípios SOLID
 
 | Princípio | Aplicação proposta |
 |---|---|
-| **SRP** | Separar regras de disponibilidade, coordenação dos casos de uso, persistência e notificações. |
-| **OCP** | Permitir adicionar novos canais de notificação implementando o contrato existente, sem modificar o fluxo de agendamento. |
-| **LSP** | Garantir que diferentes implementações de `Notificador` possam substituir umas às outras sem violar o comportamento esperado pelo contrato. |
-| **ISP** | Utilizar interfaces com operações pertinentes às necessidades de seus clientes, evitando contratos excessivamente amplos. |
-| **DIP** | Fazer com que os casos de uso dependam de abstrações, e não diretamente de implementações de banco de dados ou serviços externos. |
+| **SRP** | Separar regras de disponibilidade (`AgendaProfissional`, `AgendaPaciente`), regra temporal (`Slot`), política de cancelamento (`PoliticaDeCancelamento`), coordenação de fluxo (casos de uso) e persistência (repositórios distintos para consultas, agendas, pacientes, profissionais e notificações pendentes). |
+| **OCP** | Permitir adicionar novos canais de notificação implementando `Notificador` e novas regras de antecedência implementando `PoliticaDeCancelamento` (como 24h padrão e 72h para Odontologia/Dentista), sem modificar `AgendarConsulta` ou `CancelarConsulta`. |
+| **LSP** | Garantir que diferentes implementações de `Notificador`, `PoliticaDeCancelamento` ou dos repositórios possam substituir umas às outras sem violar o comportamento esperado pelos contratos. |
+| **ISP** | Manter interfaces enxutas e específicas para seus clientes (`ConsultaRepositorio` separado de `NotificacaoPendenteRepositorio`; `Notificador` focado em envio; `ServicoAutenticacao` focado em identificação). |
+| **DIP** | Fazer com que os casos de uso dependam de abstrações (portas), e não diretamente de implementações de SQLite ou serviços externos. |
 
-A aplicação desses princípios deverá ser proporcional às necessidades do sistema. Não serão criadas abstrações adicionais quando elas não representarem uma responsabilidade clara ou uma variação relevante.
+A aplicação desses princípios é mantida proporcional às necessidades do sistema, evitando abstrações sem variação ou responsabilidade clara.
 
 ## 5. Coesão e acoplamento
 
-A organização proposta busca manter responsabilidades relacionadas dentro de um mesmo componente e reduzir dependências entre partes do sistema que possuem motivos diferentes para mudar.
+A organização proposta mantém responsabilidades relacionadas dentro de um mesmo componente e reduz dependências entre partes do sistema que possuem motivos diferentes para mudar.
 
 ### 5.1. Coesão
 
-A separação entre as camadas favorece a coesão ao concentrar responsabilidades específicas:
-
-- **Domínio:** entidades como `Agenda` e `Consulta` concentram regras relacionadas aos conceitos que representam, sem assumir responsabilidades de persistência ou comunicação externa.
-- **Aplicação:** os casos de uso coordenam operações específicas, como agendar ou cancelar consultas, delegando as regras de negócio às entidades responsáveis.
-- **Apresentação:** os controllers concentram o tratamento das requisições e respostas HTTP, sem implementar diretamente as regras de agendamento.
-- **Infraestrutura:** repositórios e adaptadores concentram responsabilidades técnicas, como persistência e envio de notificações.
-
-Assim, alterações em uma responsabilidade tendem a permanecer localizadas no componente correspondente, reduzindo a necessidade de modificar partes não relacionadas.
+- **Domínio:** `AgendaProfissional`, `AgendaPaciente`, `Slot`, `Consulta`, `HorarioAtendimento`, `Bloqueio` e `PoliticaDeCancelamento` concentram regras de negócio puras, sem SQL ou HTTP.
+- **Aplicação:** os casos de uso coordenam operações específicas, delegando validações de negócio às classes de domínio.
+- **Apresentação:** controllers concentram tradução HTTP/JSON e validação estrutural de entrada.
+- **Infraestrutura:** repositórios, unidade de trabalho e adaptadores concentram detalhes de SQLite e integrações externas.
 
 ### 5.2. Acoplamento
 
-O acoplamento é reduzido principalmente pela separação entre as regras de negócio e as implementações tecnológicas.
+O acoplamento é reduzido pela inversão de dependências e pelo isolamento das regras de negócio:
 
-Por exemplo:
-
-- `AgendarConsulta` depende de contratos de repositório, e não diretamente do SQLite.
-- O envio de notificações utiliza a interface `Notificador`, sem depender de um serviço específico de e-mail ou WhatsApp.
-- `Agenda` não precisa conhecer controllers, APIs HTTP ou detalhes de persistência.
-- A substituição de adaptadores concretos pode ocorrer sem modificar os casos de uso, desde que os contratos sejam preservados.
-
-Dessa forma, as dependências do código permanecem direcionadas às abstrações e às regras centrais do sistema.
+- `AgendarConsulta` depende das portas de repositório e de `UnidadeDeTrabalho`, e não do SQLite.
+- `AgendarConsulta` delega conflitos e limites do paciente para `AgendaPaciente`, evitando que o caso de uso precise ser alterado caso a regra de conflito mude (ex.: slots dinâmicos).
+- O processamento de notificações depende apenas de `NotificacaoPendenteRepositorio` e `Notificador`.
+- `ConsultaRepositorio` e `NotificacaoPendenteRepositorio` permanecem desacoplados em suas interfaces, compartilhando a mesma transação física apenas na infraestrutura via `SQLiteUnidadeDeTrabalho`.
 
 ### 5.3. Trade-offs
 
-Essa separação introduz interfaces, classes e indireções adicionais, aumentando um pouco a complexidade estrutural.
+Essa separação introduz interfaces, objetos de domínio adicionais (`AgendaPaciente`, `Slot`, `PoliticaDeCancelamento`) e indireção entre camadas, aumentando moderadamente o número de arquivos.
 
-Entretanto, consideramos esse custo justificável pela necessidade de modificar integrações externas, testar componentes isoladamente e preservar as regras de negócio diante de mudanças tecnológicas.
+Esse custo é justificado pela necessidade de testar regras de negócio isoladamente, trocar tecnologias externas sem impacto no domínio e absorver evoluções previstas (como canais de notificação, regras de cancelamento e formato dos slots).
 
 ## 6. Fluxo de responsabilidades - Agendar consulta
 
-O principal caso de uso seguirá, conceitualmente, as seguintes etapas:
+O principal caso de uso seguirá conceitualmente as seguintes etapas:
 
-1. O `AgendamentoController` recebe a solicitação.
-2. O caso de uso `AgendarConsulta` obtém as informações necessárias por meio das interfaces de repositório.
-3. A `Agenda` avalia a disponibilidade do profissional, enquanto `AgendarConsulta` verifica, via `ConsultaRepositorio`, se o paciente já possui uma consulta ativa no mesmo slot.
-4. O caso de uso coordena a criação da `Consulta`.
-5. A persistência garante atomicamente a reserva do horário e o registro de uma notificação pendente.
-6. A aplicação retorna o resultado do agendamento.
-7. Um processamento separado utiliza o `Notificador` para enviar a confirmação e tratar eventuais falhas.
+1. O `AgendamentoController` recebe a solicitação HTTP, valida os parâmetros de entrada e obtém o contexto autenticado (quando aplicável via `ServicoAutenticacao`).
+2. O caso de uso `AgendarConsulta` inicia a `UnidadeDeTrabalho` (abrindo a transação de escrita no banco) e recupera os dados necessários por meio de `AgendaRepositorio`, `ConsultaRepositorio`, `PacienteRepositorio` e `ProfissionalRepositorio`.
+3. O domínio valida a operação:
+   - `Slot` valida a duração e o alinhamento do horário solicitado.
+   - `AgendaProfissional` avalia a disponibilidade do profissional (período de atendimento em `HorarioAtendimento`, ausência de `Bloqueio` e ausência de conflito com consultas ativas).
+   - `AgendaPaciente` verifica se o paciente não possui outra consulta ativa sobreposta no período e se respeita o limite de agendamentos ativos.
+4. `AgendarConsulta` instancia a entidade `Consulta` no estado inicial `AGENDADA`.
+5. Dentro da mesma transação coordenada por `UnidadeDeTrabalho`, `ConsultaRepositorio` persiste a consulta e `NotificacaoPendenteRepositorio` registra a notificação pendente.
+6. A unidade de trabalho confirma a transação (`commit`) e a aplicação retorna os dados do agendamento.
+7. Um processamento separado consulta as pendências e utiliza o `Notificador` para enviar a confirmação e tratar eventuais falhas.
 
-A validação realizada pelo domínio não é suficiente, isoladamente, para garantir a consistência em situações de concorrência.
+A validação realizada em memória pelo domínio não é suficiente, isoladamente, para garantir a consistência em situações de concorrência.
 
-A infraestrutura de persistência deverá aplicar transações e mecanismos adequados para impedir consultas conflitantes, tanto para o profissional quanto para o paciente. Com slots fixos de 30 minutos alinhados, serão utilizadas restrições únicas condicionadas às consultas ativas por `(profissional_id, inicio)` e por `(paciente_id, inicio)`, além da validação dos períodos bloqueados durante a operação.
-
-Em caso de conflito, o agendamento deverá falhar sem gerar uma consulta ou notificação pendente indevida.
+A infraestrutura de persistência aplica transações com bloqueio de escrita antecipado (`BEGIN IMMEDIATE` no SQLite) e restrições únicas parciais condicionadas às consultas ativas (`AGENDADA` e `CONFIRMADA`) por `(profissional_id, inicio)` e `(paciente_id, inicio)`. Em caso de conflito ou falha, a transação é revertida integralmente, sem gerar consulta nem notificação pendente indevida.
 
 ## 7. Justificativas das decisões
 
-A distribuição proposta busca atender principalmente aos três requisitos arquiteturalmente significativos selecionados:
+A distribuição proposta atende diretamente aos três requisitos arquiteturalmente significativos selecionados:
 
-**ASR-01 - Consistência:** a `Agenda` avalia disponibilidade do profissional; `AgendarConsulta` coordena a verificação de conflitos do paciente; e a persistência garante a atomicidade necessária para impedir agendamentos concorrentes conflitantes de ambos.
-
-**ASR-02 - Modificabilidade:** interfaces de notificação e persistência permitem substituir implementações sem alterar as regras centrais do sistema.
-
-**ASR-03 - Resiliência:** a separação entre o registro do agendamento e o envio posterior da notificação impede que uma falha externa invalide uma consulta já persistida.
+- **ASR-01 - Consistência:** `Slot`, `AgendaProfissional` e `AgendaPaciente` centralizam as regras de disponibilidade e conflito no domínio, enquanto `UnidadeDeTrabalho` e os repositórios garantem atomicidade e restrições únicas transacionais no banco tanto para o profissional quanto para o paciente.
+- **ASR-02 - Modificabilidade:** portas como `Notificador`, `ServicoAutenticacao` e os repositórios, somadas a `PoliticaDeCancelamento` e `Slot` no domínio, permitem evoluir integrações e regras sem reescrever os casos de uso.
+- **ASR-03 - Resiliência:** o registro conjunto da consulta e da notificação pendente via `UnidadeDeTrabalho` — mantendo `ConsultaRepositorio` e `NotificacaoPendenteRepositorio` segregados pelo SRP — permite que falhas no envio posterior não invalidem o agendamento.
 
 ## 8. Considerações finais
 
-A distribuição de responsabilidades busca equilibrar separação de interesses, facilidade de evolução e simplicidade de implementação.
-
-A proposta evita que entidades de domínio dependam diretamente de tecnologias externas e reduz o risco de concentração excessiva de responsabilidades em controllers ou serviços.
-
-Este documento orientará a modelagem UML e a implementação do protótipo, devendo ser atualizado caso as decisões arquiteturais ou as regras de negócio sejam modificadas.
+A distribuição de responsabilidades equilibra separação de interesses, clareza de modelagem e simplicidade de implementação para o protótipo. Este documento orientará diretamente os diagramas UML e a implementação da fatia vertical.
