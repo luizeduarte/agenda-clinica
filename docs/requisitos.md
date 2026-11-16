@@ -37,7 +37,7 @@ O **sistema proposto** contempla as funcionalidades especificadas abaixo. Já o 
 ## 4. Regras de negócio
 
 - **RN01 - Horários de atendimento:** cada profissional configura individualmente seus próprios períodos recorrentes de início e fim de atendimento; só podem ser oferecidos horários dentro desses períodos.
-- **RN02 - Duração e alinhamento:** as consultas ocupam slots fixos de **30 minutos**, alinhados a partir do início de cada período de atendimento configurado pelo profissional (por exemplo, um expediente iniciando às 08:00 gera slots 08:00–08:30, 08:30–09:00; um expediente iniciando às 10:30 gera 10:30–11:00, 11:00–11:30).
+- **RN02 - Duração e alinhamento:** as consultas ocupam slots fixos de **30 minutos**, alinhados a uma **grade** que vale para todos os profissionais e pacientes: todo slot começa em `:00` ou `:30` (08:00–08:30, 08:30–09:00 etc.). Por isso, os períodos de atendimento configurados pelo profissional devem começar e terminar em `:00` ou `:30`, e períodos do mesmo profissional no mesmo dia não podem se sobrepor. Dois slots nunca se sobrepõem parcialmente: ou são o mesmo, ou são disjuntos.
 - **RN03 - Estados e conflitos:** uma consulta pode assumir os estados `AGENDADA`, `CONFIRMADA`, `CANCELADA`, `REALIZADA` ou `FALTOU`. Consideram-se **ativas** as consultas `AGENDADA` e `CONFIRMADA`, que ocupam o horário; um profissional e um paciente não podem ter mais de uma consulta ativa no mesmo slot. Consultas `CANCELADA` liberam o horário.
 - **RN04 - Bloqueios:** períodos bloqueados por exceções datadas tornam os slots correspondentes indisponíveis.
 - **RN05 - Cancelamento:** quando solicitado pelo **paciente**, o cancelamento é permitido até **24 horas antes** do início da consulta para atendimentos gerais, ou até **72 horas antes** para atendimentos da especialidade **Odontologia (Dentista)**. Cancelamentos realizados pelo **profissional** não estão sujeitos a essa trava de antecedência.
@@ -97,3 +97,5 @@ Para atender à fatia vertical solicitada no enunciado, a primeira implementaç�
 5. **Dependência externa substituível:** `NotificadorFake` (com simulação de falha e reenvio) e `ServicoAutenticacaoFake` para simulação do contrato de autenticação.
 
 Configuração de agenda, bloqueios, cancelamento, reagendamento, confirmação pelo paciente e listagem de histórico permanecem especificados para evolução incremental.
+
+No recorte de RF08, o protótipo gera a notificação de agendamento. A notificação de cancelamento segue o mesmo mecanismo e será gerada quando `CancelarConsulta` for implementado. O lembrete (que exigiria um agendador de tempo) fica para a evolução incremental.

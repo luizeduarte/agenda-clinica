@@ -39,7 +39,7 @@ FASE 1 - REQUISITOS E ASRs
     restrição de desenvolvimento.
   - Cada profissional configura seus próprios períodos recorrentes de
     atendimento; as consultas utilizam slots fixos de 30 minutos alinhados a
-    partir do início de cada período.
+    uma grade (início em :00 ou :30), igual para todos.
   - Estados possíveis: AGENDADA, CONFIRMADA, CANCELADA, REALIZADA, FALTOU.
     Consultas ativas (AGENDADA e CONFIRMADA) não podem se sobrepor para o
     profissional nem para o paciente; CANCELADA libera o slot.

@@ -24,10 +24,10 @@ Contém os conceitos, estados, relacionamentos e regras essenciais do sistema, i
 | `Paciente` | `id`, `nome`, `email` | Representar o paciente atendido na clínica e suas informações essenciais para identificação e notificação. |
 | `Profissional` | `id`, `nome`, `especialidade` | Representar o profissional de saúde ou estagiário responsável pelos atendimentos e sua área de atuação. |
 | `Especialidade` | `id`, `nome` | Representar a área de atendimento da clínica (ex.: Clínica Médica, Pediatria, Odontologia), permitindo consultar profissionais por área e aplicar políticas específicas. |
-| `Slot` (`PeriodoConsulta`) | `inicio`, `fim` | Objeto de valor que representa o período `[inicio, fim)` de uma consulta, encapsulando o alinhamento à grade de 30 minutos e o cálculo de sobreposição de horários (isolando a lógica temporal caso o modelo evolua para slots dinâmicos). |
-| `AgendaProfissional` | `profissional_id`, `horarios_atendimento`, `bloqueios`, `consultas` | Avaliar a disponibilidade de horários **do profissional**, considerando seus períodos de atendimento, bloqueios datados e consultas ativas. |
+| `Slot` (`PeriodoConsulta`) | `inicio`, `fim` | Objeto de valor que representa o período `[inicio, fim)` de uma consulta, encapsulando o alinhamento à grade de 30 minutos (início em `:00` ou `:30`) e o cálculo de sobreposição de horários (isolando a lógica temporal caso o modelo evolua para slots dinâmicos). |
+| `AgendaProfissional` | `profissional_id`, `horarios_atendimento`, `bloqueios`, `slots_ocupados` | Avaliar a disponibilidade de horários **do profissional**, considerando seus períodos de atendimento, bloqueios datados e os `Slot`s já ocupados por consultas ativas. Recebe os slots, e não objetos `Consulta`, para que o módulo `agenda` não dependa do módulo `consultas`. |
 | `AgendaPaciente` | `paciente_id`, `consultas` | Avaliar a disponibilidade **do paciente** no domínio, impedindo sobreposição de consultas ativas em quaisquer profissionais (RN03) e validando o limite máximo de consultas ativas permitidas (RN08). |
-| `Consulta` | `id`, `paciente_id`, `profissional_id`, `slot` (`inicio`, `fim`), `status` | Representar o agendamento entre paciente e profissional, mantendo seus participantes, período e estado, além de controlar as transições válidas. |
+| `Consulta` | `id`, `paciente_id`, `profissional_id`, `especialidade_id`, `slot` (`inicio`, `fim`), `status` | Representar o agendamento entre paciente e profissional, mantendo seus participantes, a especialidade (copiada do profissional no agendamento, para o limite por especialidade da RN08), período e estado, além de controlar as transições válidas. |
 | `HorarioAtendimento` | `dia_semana`, `hora_inicio`, `hora_fim` | Representar os períodos **semanais recorrentes** de atendimento configurados individualmente para cada profissional (ex.: terças-feiras, das 08:00 às 12:00). |
 | `Bloqueio` | `id`, `inicio`, `fim`, `motivo` | Representar **exceções datadas** no calendário em que a agenda fica indisponível (ex.: férias, feriados, reuniões), diferenciando-se de `HorarioAtendimento` por tratar ocorrências pontuais em datas específicas em vez da grade semanal recorrente. |
 | `PoliticaDeCancelamento` | — (estratégia) | Encapsular a regra de antecedência mínima para cancelamento de consultas (24 horas padrão; 72 horas para Odontologia/Dentista; isenção de trava quando o cancelamento parte do profissional). |
@@ -45,7 +45,7 @@ Contém os conceitos, estados, relacionamentos e regras essenciais do sistema, i
 - Um `Paciente` possui uma `AgendaPaciente` e pode possuir zero ou várias `Consultas`.
 - Um `Profissional` está associado a uma `Especialidade`, possui uma `AgendaProfissional` e pode realizar zero ou várias `Consultas`.
 - Cada `Consulta` vincula exatamente um `Paciente`, um `Profissional` e um `Slot` (`PeriodoConsulta`).
-- Uma `AgendaProfissional` agrega os registros recorrentes de `HorarioAtendimento` do profissional, suas `Consultas` e os `Bloqueio`s datados aplicáveis (individuais ou coletivos, como feriados).
+- Uma `AgendaProfissional` agrega os registros recorrentes de `HorarioAtendimento` do profissional, os `Slot`s ocupados por suas consultas ativas e os `Bloqueio`s datados aplicáveis (individuais ou coletivos, como feriados).
 
 Tanto `AgendaProfissional` quanto `AgendaPaciente` avaliam regras inteiramente em memória a partir dos dados fornecidos a elas, sem consultar diretamente o banco de dados. Retirar a checagem de disponibilidade e de limites do paciente de dentro do caso de uso `AgendarConsulta` e colocá-la em `AgendaPaciente` evita acoplamento da camada de aplicação às regras de conflito.
 
@@ -109,7 +109,7 @@ Um componente de processamento de notificações consulta as pendências via `No
 
 **Aplicação: `AgendaProfissional`, `AgendaPaciente`, `Slot` e `Consulta`**
 
-- A responsabilidade de avaliar a disponibilidade **do profissional** é atribuída à `AgendaProfissional`, pois ela conhece seus horários de atendimento, bloqueios e consultas.
+- A responsabilidade de avaliar a disponibilidade **do profissional** é atribuída à `AgendaProfissional`, pois ela conhece seus horários de atendimento, bloqueios e slots ocupados.
 - A responsabilidade de avaliar conflitos e limites **do paciente** é atribuída à `AgendaPaciente`, pois ela reúne as consultas ativas do paciente e as regras de sobreposição e limite diário/por especialidade.
 - O objeto de valor `Slot` concentra o conhecimento sobre alinhamento à grade e interseção temporal.
 - A entidade `Consulta` concentra a validação de suas transições de estado.
