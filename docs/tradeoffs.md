@@ -1,94 +1,157 @@
 # Trade-offs arquiteturais
 
-## 1. Alternativas consideradas
+A arquitetura escolhida combina duas decisões que não estão no mesmo nível, por
+isso as alternativas são analisadas em dois eixos:
 
-Foram consideradas três alternativas para o sistema:
+- **Eixo 1 — Implantação:** monólito simples, monólito
+  modular ou microsserviços (ADR-001).
+- **Eixo 2 — Organização interna:** camadas tradicionais ou
+  camadas com portas e adaptadores (ADR-004).
 
-- Alternativa A — monólito simples: aplicação única com pouca separação
-  entre domínio, casos de uso e infraestrutura.
-- Alternativa B — monólito modular com camadas e inspiração hexagonal:
-  apresentação, aplicação, domínio e infraestrutura separadas por contratos.
-- Alternativa C — microsserviços: serviços independentes para partes como
-  agenda, consultas e notificações.
+Cada item indica, entre parênteses, o atributo de qualidade afetado e a parte
+do problema nos requisitos a que se relaciona.
 
-A Alternativa B foi escolhida.
+## 1. Eixo 1 — Implantação
 
-## 2. Comparação
+### 1.1. Monólito simples
 
-| Critério | Monólito simples | Monólito modular + camadas/hexagonal | Microsserviços |
-|---|---|---|---|
-| Modificabilidade | Baixa: regras e infraestrutura tendem a se misturar | Alta: portas e adaptadores isolam integrações | Alta entre serviços, mas com contratos distribuídos |
-| Desempenho | Bom em chamadas internas, com pouca indireção | Bom, pois a comunicação principal permanece em processo | Pode sofrer latência e custo de rede |
-| Disponibilidade | Operação simples, mas falhas ficam concentradas | Operação simples e bom isolamento lógico | Pode isolar falhas, mas exige infraestrutura distribuída |
-| Testabilidade | Menor quando há dependência direta de banco e serviços | Alta: domínio e aplicação usam contratos substituíveis | Alta por serviço, mas exige testes de integração e contrato |
-| Complexidade | Baixa inicialmente, com risco de crescimento desorganizado | Moderada e explícita | Alta, especialmente para transações e diagnóstico |
-| Implantação | Simples | Simples, com módulos no mesmo artefato | Complexa, com vários artefatos e pipelines |
-| Escalabilidade | Escala o sistema inteiro | Escala o sistema inteiro inicialmente | Permite escalar serviços separadamente |
-| Custo de desenvolvimento/operação | Baixo no início, maior custo de manutenção futura | Moderado e proporcional ao protótipo | Alto para o escopo e a equipe atuais |
+Uma aplicação sem fronteiras internas, ou seja, qualquer parte chama qualquer parte 
+e acessa o banco diretamente.
 
-## 3. Alternativa A — monólito simples
+**Pode favorecer**
 
-### Vantagens
+- transação local no mesmo banco, impedindo conflitos do profissional e do 
+  paciente (Atributo de Consistência; ASR-01, RN03, RN08);
+- consulta e pendência de notificação gravadas na mesma transação, sem broker
+  (Disponibilidade; ASR-03);
+- um único artefato, sem fronteiras a manter (Custo de desenvolvimento);
+- para rodar o sistema, basta iniciar um programa. Um artefato e um banco
+  (Implantação, Custo de operação);
+- chamadas diretas nas consultas de disponibilidade, por exemplo, que cruza diversos 
+  dados (Desempenho; RF02).
 
-- menor custo inicial;
-- implantação e operação simples;
-- comunicação interna direta;
+**Pode custar**
 
-### Desvantagens
+- envio de notificação espalhado pelos fluxos que o disparam. Assim, trocar o canal
+  altera as ações de agendar, cancelar e reagendar (Modificabilidade; ASR-02, RF08);
+- regras de agenda e de paciente duplicadas entre agendar e reagendar
+  (Modificabilidade; RN01, RN03, RN04, RN08);
+- regras misturadas aos fluxos, o código fica testável só com banco e serviços reais
+  (Testabilidade; RN05, RN08);
+- tudo no mesmo processo, então uma falha pode derrubar o sistema inteiro
+  (Disponibilidade);
+- só é possível escalar o sistema inteiro (Escalabilidade; RF02).
 
-- pode misturar regras de negócio e integrações externas;
-- dificulta testar o domínio sem banco ou serviços reais;
-- torna a troca do canal de notificação mais invasiva;
-- aumenta o risco de uma falha no notificador bloquear o agendamento;
-- logica muito concetrada, dificultando a modificabilidade;
+### 1.2. Monólito modular (escolhida)
 
-Foi rejeitada porque não atende tão bem à modificabilidade do ASR-02 nem
-ao isolamento de falhas do ASR-03. A menor complexidade inicial não
-compensa o acoplamento nas partes que o projeto exige que sejam substituíveis.
+Uma aplicação e um banco, com diferentes módulos (`Agenda`, `Consultas`, `Cadastros`,
+`Notificacoes` e `Autenticacao`, por exemplo) separados por interfaces internas.
 
-## 4. Alternativa B — monólito modular com camadas e inspiração hexagonal
+**Pode favorecer**
 
-### Vantagens
+- transação local e restrições de unicidade no banco, mesmo entre agendas 
+  de profissionais diferentes (Consistência; ASR-01, RN03, RN08);
+- consulta e pendência de notificação gravadas na mesma transação, sem broker
+  (Disponibilidade; ASR-03);
+- envio centralizado em um módulo dedicado às notificações (Modificabilidade; 
+  ASR-02, RF08);
+- para rodar o sistema, basta iniciar um programa. Um artefato e um banco
+  (Implantação, Custo de operação);
+- chamadas entre módulos dentro do mesmo processo, sem rede (Desempenho; RF02).
 
-- separa regras de domínio, coordenação de casos de uso, apresentação e
-  infraestrutura;
-- permite que `Notificador`, repositórios e autenticação sejam contratos com
-  adaptadores substituíveis;
-- mantém a comunicação principal em processo, sem custo de rede entre
-  módulos;
-- permite registrar consulta e notificação pendente na mesma transação;
-- facilita testes unitários e de integração;
-- preserva fronteiras que podem apoiar uma futura extração de serviços.
+**Pode custar**
 
-### Desvantagens
+- módulos de negócio no mesmo processo, então uma falha pode derrubar os 
+  módulos juntos (Disponibilidade);
+- só é possível escalar o sistema inteiro (Escalabilidade; RF02);
+- banco compartilhado: um módulo pode acessar tabelas de outro, e as
+  fronteiras dependem de disciplina (Modificabilidade).
 
-- adiciona interfaces, classes e indireções (complexidade de implantação);
-- exige disciplina para preservar a regra de dependência entre camadas;
-- não permite escalar cada módulo de forma independente;
+### 1.3. Microsserviços
 
-Esta alternativa oferece o melhor equilíbrio para o escopo atual. Ela atende
-ao ASR-01 com uma transação e persistência compartilhada, ao ASR-02
-com a interface `Notificador`, e ao ASR-03 com o registro transacional de
-pendências e o processamento posterior.
+Os módulos do monólito modular se tornam serviços implantados de forma independente, cada um com seu próprio banco e comunicando-se pela rede.
 
-## 5. Alternativa C — microsserviços
+**Pode favorecer**
 
-### Vantagens
+- escala separada do envio de notificações (Escalabilidade; RF08);
+- falha em um serviço não derruba o resto do sistema (Disponibilidade; ASR-03).
 
-- permite implantar e escalar notificações ou consultas separadamente;
-- pode isolar falhas entre serviços;
-- favorece evolução independente quando há equipes, cargas ou ciclos de
-  implantação diferentes;
+**Pode custar**
 
-### Desvantagens
+- a verificação de horário de atendimento e bloqueio (em `Agenda`) e a gravação
+  da consulta (em `Consultas`) ficam em bancos diferentes e não cabem em
+  uma transação, exigindo coordenação distribuída (Consistência; ASR-01,
+  RN01, RN04);
+- broker e registro de pendências em cada serviço (Complexidade, Custo de
+  operação; ASR-03);
+- disponibilidade por especialidade consultando diferentes dados pela rede (Desempenho; RF02);
+- dados do paciente replicados entre serviços (Segurança; restrição 5.1, LGPD);
+- vários artefatos, pipelines e testes de integração entre serviços
+  (Implantação, Testabilidade).
 
-- exige comunicação de rede, observabilidade e operação distribuída;
-- aumenta o custo de desenvolvimento e implantação;
-- dificulta garantir atomicamente a reserva e o registro da notificação;
-- exige coordenação distribuída, eventos ou outra estratégia para manter
-  consistência;
+### 1.4. Decisão
 
-Foi rejeitada porque o protótipo não precisa de implantação independente nem
-de escalabilidade por serviço. Para o ASR-01, transformar uma transação
-local em uma operação distribuída aumentaria o risco e a complexidade. O
-monólito modular mantém fronteiras explícitas sem antecipar esse custo.
+**Monólito modular.** O monólito simples atende ao ASR-01 tão bem quanto ele,
+porque também usa transação local, o que o descarta é a falta de fronteiras
+para isolar os módulos, como as notificações (ASR-02, RF08). Microsserviços oferecem escala e isolamento que nenhum requisito da clínica exige, ao custo de separar
+em bancos diferentes a verificação da agenda e a gravação da consulta (RN01,
+RN04), o que exige coordenação distribuída.
+
+## 2. Eixo 2 — Organização interna
+
+A partir da decisão por um monólito modular, é preciso decidir a organização interna do sistema.
+
+### 2.1. Camadas tradicionais
+
+Apresentação → aplicação → domínio → infraestrutura. Os casos de uso chamam
+diretamente as classes concretas (repositório de banco de dados, cliente de e-mail,
+cliente de autenticação).
+
+**Pode favorecer**
+
+- menos interfaces e indireção (Complexidade estrutural, Custo de
+  desenvolvimento).
+
+**Pode custar**
+
+- o caso de uso de agendamento depende do cliente de e-mail concreto: trocar o canal
+  altera o caso de uso (Modificabilidade; ASR-02);
+- simulação do serviço universitário embutida na classe concreta
+  (Testabilidade; restrição 5.2);
+- RN05 e RN08 testáveis só com banco (Testabilidade).
+
+### 2.2. Camadas com portas e adaptadores (escolhida)
+
+Os casos de uso são portas de entrada, acionadas pelos controllers REST;
+`Notificador`, `ServicoAutenticacao`, repositórios, entre outros, são
+portas de saída, implementadas por adaptadores na infraestrutura. O núcleo não
+depende dos adaptadores.
+
+**Pode favorecer**
+
+- troca de canal por um novo adaptador de `Notificador`, sem modificar
+  outros módulos (Modificabilidade; ASR-02);
+- implementações simuladas do notificador e da autenticação para simular falha
+  no envio e o serviço universitário (Testabilidade; ASR-03, restrição 5.2);
+- núcleo sem SQL nem HTTP, com RN02, RN05 e RN08 testáveis sem banco
+  (Testabilidade);
+
+**Pode custar**
+
+- mais interfaces, adaptadores e indireção (Complexidade estrutural, Custo de
+  desenvolvimento);
+
+### 2.3. Decisão
+
+**Camadas com portas e adaptadores.** O custo extra em interfaces é compensado
+pelas portas que respondem diretamente a requisitos, como por exemplo `Notificador` (ASR-02, ASR-03) e `ServicoAutenticacao` (restrição 5.2).
+
+---
+
+## 3. ASRs, decisões e trade-offs
+
+| ASR | Decisão favorecida | Trade-off |
+|---|---|---|
+| **ASR-01 — Consistência** | Monólito modular com transação local e restrições de unicidade no mesmo banco; verificação de disponibilidade e gravação da reserva em uma única transação (ADR-001, ADR-003). | Escritas serializadas no banco; escala conjunta e falha no processo afeta todos os módulos. |
+| **ASR-02 — Modificabilidade** | Módulo `Notificacoes` e porta `Notificador`; troca de canal por adaptador (ADR-002, ADR-004). | Mais interfaces e indireção. |
+| **ASR-03 — Resiliência** | Pendência gravada junto da consulta e enviada depois, sem acoplamento temporal com o canal (ADR-002). | Atraso na notificação; entrega *at-least-once* pode duplicar mensagens (risco aceito); consultas e pendências presas ao mesmo banco. |
