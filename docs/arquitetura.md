@@ -42,29 +42,30 @@ As regras de negócio não são implementadas nos controllers.
 
 ### 3.2. Aplicação
 
-Contém os casos de uso responsáveis por coordenar as operações do sistema.
+Contém os casos de uso responsáveis por coordenar as operações do sistema:
 
-Entre os principais estão:
-
-- `AgendarConsulta`
+- `ConfigurarHorarioAtendimento`
 - `ConsultarDisponibilidade`
+- `AgendarConsulta`
 - `CancelarConsulta`
 - `ReagendarConsulta`
 - `ConfirmarConsulta`
+- `RegistrarBloqueio`
+- `ListarConsultas`
 
-Os casos de uso coordenam as entidades do domínio e utilizam interfaces para acessar recursos externos.
+Os casos de uso coordenam as entidades e objetos do domínio e utilizam interfaces para acessar recursos externos.
 
-Por exemplo, `AgendarConsulta` coordena a verificação da disponibilidade do profissional e do paciente, a criação da consulta e sua persistência.
+Por exemplo, `AgendarConsulta` coordena a obtenção dos dados via repositórios, delega a validação temporal e de disponibilidade a `Slot`, `AgendaProfissional` e `AgendaPaciente`, instancia a `Consulta` e persiste as alterações atomicamente pela `UnidadeDeTrabalho`.
 
 Os casos de uso não executam diretamente comandos SQL nem realizam chamadas específicas a serviços externos.
 
 ### 3.3. Domínio
 
-Contém as entidades e regras essenciais do sistema, descritas em `modelo_dominio.md`.
+Contém as entidades, objetos de valor e regras essenciais do sistema, detalhados em [`responsabilidades.md`](responsabilidades.md).
 
-Entre os principais conceitos estão `Paciente`, `Profissional`, `Agenda`, `Consulta`, `HorarioAtendimento`, `Bloqueio` e `Especialidade`.
+Entre os principais conceitos estão `Paciente`, `Profissional`, `Especialidade`, `Slot`, `AgendaProfissional`, `AgendaPaciente`, `Consulta`, `HorarioAtendimento`, `Bloqueio` e `PoliticaDeCancelamento`.
 
-A `Agenda` concentra a avaliação da disponibilidade do profissional. A `Consulta` representa o agendamento e controla as transições válidas de seu estado.
+A `AgendaProfissional` concentra a avaliação da disponibilidade do profissional, enquanto `AgendaPaciente` concentra as regras de conflito e limite de reservas do paciente. `Slot` encapsula a validação de grade e sobreposição temporal, `PoliticaDeCancelamento` isola prazos por ator e especialidade e `Consulta` controla as transições válidas de seu estado.
 
 As regras de domínio são independentes de HTTP, banco de dados e serviços de notificação.
 
@@ -74,9 +75,9 @@ Contém as implementações concretas necessárias para persistência e integra�
 
 Inclui:
 
-- Repositórios que utilizam SQLite.
-- Adaptadores de notificação.
-- Adaptador de autenticação universitária.
+- Repositórios e `SQLiteUnidadeDeTrabalho` que utilizam SQLite.
+- Adaptadores de notificação (`NotificadorFake`).
+- Adaptador de autenticação universitária (`ServicoAutenticacaoFake`).
 - Processamento das notificações pendentes.
 
 Esses componentes implementam os contratos utilizados pela aplicação, mantendo os detalhes tecnológicos fora das regras de negócio.
@@ -99,12 +100,14 @@ A configuração da aplicação é responsável por criar os componentes e assoc
 
 | Interface | Responsabilidade |
 |---|---|
-| `ConsultaRepositorio` | Consultar, registrar e atualizar consultas, incluindo a verificação dos horários ocupados pelo paciente. |
-| `AgendaRepositorio` | Recuperar agendas, períodos de atendimento e bloqueios. |
-| `NotificacaoPendenteRepositorio` | Registrar e recuperar notificações que precisam ser enviadas. |
-| `UnidadeDeTrabalho` | Coordenar as operações de persistência que devem ocorrer na mesma transação. |
+| `ConsultaRepositorio` | Persistir e recuperar consultas por ID, por profissional ou por paciente (incluindo listagens de histórico e consultas ativas), sem realizar validações de regra de negócio. |
+| `AgendaRepositorio` | Persistir e recuperar períodos de atendimento e bloqueios das agendas. |
+| `PacienteRepositorio` | Recuperar os dados essenciais de pacientes. |
+| `ProfissionalRepositorio` | Recuperar os dados essenciais de profissionais e suas especialidades (incluindo filtro por especialidade). |
+| `NotificacaoPendenteRepositorio` | Registrar, consultar e atualizar notificações pendentes de envio. |
+| `UnidadeDeTrabalho` | Coordenar as operações de persistência de múltiplos repositórios que devem ocorrer na mesma transação. |
 | `Notificador` | Estabelecer o contrato para envio de mensagens, independentemente do canal. |
-| `ServicoAutenticacao` | Estabelecer o contrato de identificação de usuários pelo serviço de autenticação universitário. |
+| `ServicoAutenticacao` | Estabelecer o contrato de identificação de usuários e seus papéis pelo serviço de autenticação universitário. |
 
 Essas interfaces permitem substituir implementações concretas sem alterar os casos de uso e as regras centrais do sistema.
 
@@ -118,16 +121,19 @@ Entre os endpoints previstos estão:
 
 | Método | Endpoint | Operação |
 |---|---|---|
-| `GET` | `/profissionais/{id}/disponibilidade` | Consultar horários disponíveis. |
+| `GET` | `/disponibilidade` | Consultar horários disponíveis (filtrando por profissional ou especialidade e data). |
+| `PUT` | `/profissionais/{id}/horarios-atendimento` | Configurar ou atualizar períodos de atendimento do profissional. |
+| `POST` | `/profissionais/{id}/bloqueios` | Registrar bloqueio datado na agenda. |
 | `POST` | `/consultas` | Agendar consulta. |
-| `GET` | `/consultas/{id}` | Consultar uma consulta. |
+| `GET` | `/consultas` | Listar consultas de um paciente ou da agenda de um profissional. |
+| `GET` | `/consultas/{id}` | Consultar detalhes de uma consulta. |
 | `PATCH` | `/consultas/{id}` | Reagendar uma consulta. |
-| `POST` | `/consultas/{id}/cancelamento` | Cancelar uma consulta. |
+| `DELETE` | `/consultas/{id}` | Cancelar uma consulta (alterando seu estado para `CANCELADA` e liberando o slot). |
 | `POST` | `/consultas/{id}/confirmacao` | Confirmar uma consulta. |
 
-A consulta de disponibilidade receberá a data desejada como parâmetro.
+A consulta de disponibilidade receberá a data desejada e o filtro (`profissional_id` ou `especialidade`) como parâmetros de consulta.
 
-As respostas utilizarão códigos HTTP adequados, incluindo `201 Created` para agendamentos realizados, `400 Bad Request` para entradas inválidas, `403 Forbidden` para operações não autorizadas, `404 Not Found` para recursos inexistentes e `409 Conflict` para conflitos de agendamento.
+As respostas utilizarão códigos HTTP adequados, incluindo `201 Created` para agendamentos realizados, `200 OK` / `204 No Content` para cancelamentos e consultas, `400 Bad Request` para entradas inválidas, `403 Forbidden` para operações não autorizadas, `404 Not Found` para recursos inexistentes e `409 Conflict` para conflitos de agendamento.
 
 A documentação detalhada das operações e de seus formatos de entrada e saída será mantida junto à implementação da API.
 
@@ -145,7 +151,7 @@ O envio de notificações será separado do processamento dos agendamentos.
 
 O caso de uso registra a consulta e uma notificação pendente na mesma transação. O envio é executado posteriormente por um componente de processamento de notificações.
 
-Esse mecanismo utiliza uma tabela de pendências no banco de dados, sem necessidade de um broker de mensagens externo.
+Esse mecanismo utiliza uma tabela de pendências no banco de dados (padrão *Transactional Outbox*), sem necessidade de um broker de mensagens externo. Por exigir atomicidade local, as implementações de `ConsultaRepositorio` e `NotificacaoPendenteRepositorio` precisam operar sobre o mesmo banco transacional. Em vez de fundir essas duas interfaces em um único repositório — o que violaria o SRP e acoplaria o módulo de consultas ao ciclo de vida das notificações —, as portas permanecem separadas e o compartilhamento da conexão/transação é coordenado na infraestrutura pela `SQLiteUnidadeDeTrabalho`.
 
 ## 6. Persistência e consistência
 
@@ -157,27 +163,26 @@ O acesso aos dados ocorrerá por repositórios, evitando dependências diretas e
 
 ### 6.2. Controle de conflitos
 
-As consultas possuem duração fixa de 30 minutos e utilizam horários alinhados à grade de atendimento.
+As consultas possuem duração fixa de 30 minutos e utilizam horários alinhados ao início dos períodos de atendimento configurados por cada profissional.
 
-Antes de realizar o agendamento, serão verificadas:
+Antes de realizar o agendamento, o domínio verifica:
 
-1. A existência de um período de atendimento válido.
-2. A ausência de bloqueios na agenda do profissional.
-3. A disponibilidade do profissional.
-4. A ausência de outra consulta ativa do paciente no mesmo horário.
+1. A validade e o alinhamento do `Slot` solicitado.
+2. Na `AgendaProfissional`: a existência de um `HorarioAtendimento` válido, a ausência de `Bloqueio` datado e a ausência de outra consulta ativa do profissional no horário.
+3. Na `AgendaPaciente`: a ausência de outra consulta ativa do paciente no mesmo horário e o respeito ao limite máximo de consultas ativas permitidas.
 
 Consideram-se ativas as consultas com estado `AGENDADA` ou `CONFIRMADA`.
 
-Para impedir reservas conflitantes, o banco utilizará restrições de unicidade condicionadas às consultas ativas, considerando os pares:
+Como os slots são discretizados e alinhados à grade (RN02), não ocorre sobreposição parcial entre horários, bastando impedir duplicidade de horário inicial entre consultas ativas. Para isso, o banco utilizará restrições de unicidade condicionadas às consultas ativas para os pares:
 
 - `(profissional_id, inicio)`
 - `(paciente_id, inicio)`
 
 A verificação prévia de disponibilidade não é suficiente para garantir a consistência sob concorrência.
 
-No SQLite, as operações de reserva utilizarão transações de escrita iniciadas antes das verificações de disponibilidade, com bloqueio de escrita antecipado (`BEGIN IMMEDIATE`). A validação dos bloqueios e a gravação da consulta ocorrerão dentro da mesma transação.
+No SQLite, as operações de reserva utilizarão transações de escrita iniciadas antes das verificações de disponibilidade, com bloqueio de escrita antecipado (`BEGIN IMMEDIATE`). A validação dos bloqueios, dos limites do paciente e a gravação da consulta ocorrerão dentro da mesma transação.
 
-As operações que alteram a disponibilidade, como criação de bloqueios, seguirão o mesmo controle transacional.
+As operações que alteram a disponibilidade, como criação de bloqueios e alteração de horários de atendimento, seguirão o mesmo controle transacional.
 
 Caso a reserva não possa ser concluída, a transação será revertida e a operação retornará um erro, sem produzir agendamento parcial.
 
@@ -191,11 +196,11 @@ Se ocorrer conflito ou falha, a transação será revertida, preservando a consu
 
 ### 6.4. Unidade de trabalho
 
-A interface `UnidadeDeTrabalho` coordenará as operações que precisam ser persistidas atomicamente.
+A interface `UnidadeDeTrabalho` coordenará as operações que precisam ser persistidas atomicamente entre diferentes repositórios.
 
-No agendamento, isso inclui o registro da consulta e da notificação pendente.
+No agendamento, isso inclui o registro da consulta via `ConsultaRepositorio` e o registro da notificação pendente via `NotificacaoPendenteRepositorio`. Manter os contratos separados preserva a coesão de cada módulo, enquanto a implementação concreta (`SQLiteUnidadeDeTrabalho`) garante que ambos compartilhem a mesma conexão e transação no banco de dados.
 
-Todas as operações da unidade de trabalho utilizarão a mesma transação de banco de dados, permitindo confirmar ou reverter as alterações em conjunto.
+Todas as operações da unidade de trabalho utilizarão a mesma transação, permitindo confirmar ou reverter as alterações em conjunto.
 
 ## 7. Notificações
 
@@ -232,9 +237,9 @@ As regras de agendamento e o processamento das pendências permanecerão indepen
 
 O sistema utilizará o serviço de autenticação universitário para identificar profissionais e estagiários.
 
-A integração será isolada pela interface `ServicoAutenticacao`, implementada no protótipo por `AutenticacaoFake`.
+A integração será isolada pela interface `ServicoAutenticacao`, implementada no protótipo por `ServicoAutenticacaoFake`.
 
-As permissões serão verificadas conforme o papel do usuário, separando autenticação de autorização.
+As permissões serão verificadas conforme o papel do usuário (`Paciente` ou `Profissional / Estagiário`), separando autenticação de autorização.
 
 Os dados pessoais utilizados no agendamento serão limitados às informações necessárias para o funcionamento do sistema, considerando as exigências da LGPD.
 
@@ -256,12 +261,14 @@ src/
       agenda/
         dominio/
         aplicacao/
+        portas/
       consultas/
         dominio/
         aplicacao/
         portas/
       cadastros/
         dominio/
+        portas/
       notificacoes/
         aplicacao/
         portas/
@@ -288,9 +295,9 @@ Essa estrutura preserva a separação de responsabilidades e permite evoluir os 
 
 | ASR | Decisões arquiteturais relacionadas |
 |---|---|
-| **ASR-01 - Consistência** | Slots padronizados, validação de disponibilidade, restrições de unicidade e transações. |
-| **ASR-02 - Modificabilidade** | Interface `Notificador`, portas e adaptadores, separação entre regras de negócio e infraestrutura. |
-| **ASR-03 - Resiliência** | Registro transacional de notificações pendentes, envio desacoplado e mecanismo de reenvio. |
+| **ASR-01 - Consistência** | Slots discretizados (`Slot`), validação de disponibilidade no domínio (`AgendaProfissional` e `AgendaPaciente`), restrições de unicidade e transações via `UnidadeDeTrabalho`. |
+| **ASR-02 - Modificabilidade** | Interfaces `Notificador`, `ServicoAutenticacao` e repositórios, além de `PoliticaDeCancelamento` e `Slot` desacoplados, separando regras de negócio e infraestrutura. |
+| **ASR-03 - Resiliência** | Registro transacional de notificações pendentes pela `UnidadeDeTrabalho` (mantendo repositórios segregados), envio desacoplado e mecanismo de reenvio. |
 
 A arquitetura introduz algumas abstrações adicionais, mas mantém a aplicação em um único processo principal, reduzindo os custos de desenvolvimento e operação.
 
@@ -298,12 +305,12 @@ As alternativas arquiteturais e os custos das decisões serão detalhados nos do
 
 ## 11. Evolução da arquitetura
 
-A separação entre domínio e infraestrutura permite substituir tecnologias sem alterar as regras centrais do sistema.
+A separação entre domínio e infraestrutura permite substituir tecnologias e evoluir regras centrais com impacto localizado.
 
-Na substituição do SQLite por PostgreSQL, serão modificados os adaptadores de persistência, a configuração de conexão e os mecanismos específicos de controle transacional.
+1. **Troca do mecanismo de persistência (SQLite -> PostgreSQL):** serão modificados os adaptadores de repositório, a implementação de `UnidadeDeTrabalho`, a configuração de conexão e o DDL do schema, mantendo domínio e casos de uso inalterados.
+2. **Substituição do canal de notificações (E-mail/Fake -> WhatsApp/SMS):** será necessário implementar outro adaptador de `Notificador` e atualizar a composição de dependências na inicialização, preservando `AgendarConsulta` e o processador de pendências.
+3. **Evolução para slots dinâmicos desalinhados `(inicio, fim)`:** caso a regra de negócio deixe de usar slots fixos alinhados de 30 minutos e passe a aceitar intervalos arbitrários (ex.: `10:15–10:45`), a mudança no domínio ficará contida em `Slot`, `AgendaProfissional` e `AgendaPaciente` (substituindo a checagem por grade fixa pela verificação de interseção `inicio_a < fim_b e fim_a > inicio_b`), sem alterar o caso de uso `AgendarConsulta`. Na persistência, entretanto, o índice único parcial por `(profissional_id, inicio)` e `(paciente_id, inicio)` deixa de bastar para evitar sobreposição: no SQLite seria necessário consultar intervalos conflitantes sob transação `BEGIN IMMEDIATE`, e em uma eventual migração para PostgreSQL seria possível usar restrições de exclusão temporal (`EXCLUDE USING gist` sobre `tsrange`).
 
-Na substituição do canal de notificações, será necessário implementar outro adaptador e atualizar sua configuração.
-
-A API REST também permite adicionar novos clientes sem modificar diretamente os casos de uso.
+A API REST também permite adicionar novos clientes (como aplicativo mobile) sem modificar diretamente os casos de uso.
 
 Essas possibilidades de evolução decorrem da organização modular e dos contratos estabelecidos entre os componentes.

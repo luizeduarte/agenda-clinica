@@ -19,30 +19,38 @@ FASE 1 - REQUISITOS E ASRs
 2. Atores
   - Paciente
   - Profissional de saúde / Estagiário
-  - Recepcionista/Secretária
 
 3. Requisitos funcionais
-  RF1  Manter agenda de disponibilidade de um profissional
-  RF2  Consultar horários disponíveis de um profissional ou de uma especialidade
-  RF3  Agendar consulta em um horário disponível
-  RF4  Cancelar consulta (respeitando antecedência mínima)
-  RF5  Reagendar consulta (cancelar + agendar de forma atômica)
-  RF6  Impedir conflito de horário (profissional e paciente)
-  RF7  Confirmar consulta (paciente confirma após lembrete)
-  RF8  Enviar notificações (agendamento, cancelamento, lembrete)
-  RF9  Bloquear períodos da agenda (férias, reunião, feriado)
-  RF10 Consultar histórico de consultas de um paciente
+  RF1  Manter agenda de disponibilidade de um profissional (Profissional / Estagiário)
+  RF2  Consultar horários disponíveis de um profissional ou de uma especialidade (Paciente, Profissional / Estagiário)
+  RF3  Agendar consulta em um horário disponível (Paciente)
+  RF4  Cancelar consulta (respeitando antecedência mínima quando aplicável) (Paciente, Profissional / Estagiário)
+  RF5  Reagendar consulta (preservando a original em caso de indisponibilidade/falha) (Paciente)
+  RF6  Impedir conflito de horário e respeitar limites de reserva (Sistema)
+  RF7  Confirmar consulta (paciente confirma após lembrete) (Paciente)
+  RF8  Enviar notificações (agendamento, cancelamento, lembrete) (Sistema)
+  RF9  Bloquear períodos da agenda (férias, reunião, feriado) (Profissional / Estagiário)
+  RF10 Consultar histórico de consultas do paciente ou agenda do profissional (Paciente, Profissional / Estagiário)
 
 3.1 Regras de negócio
-  - Cancelamento só pode ser feito até 24 horas antes da consulta.
-    Essa antecedência é uma regra de negócio, não uma restrição de desenvolvimento.
-  - Consultas utilizam slots fixos de 30 minutos, alinhados à grade da agenda.
-  - Consultas ativas não podem se sobrepor para o profissional nem para o paciente.
-  - Reagendamento cancela a consulta anterior e cria a nova na mesma transação.
+  - Cancelamento pelo paciente só pode ser feito até 24 horas antes da consulta
+    (ou 72 horas para Odontologia/Dentista). Cancelamentos pelo profissional
+    não têm trava de antecedência. Essa política é regra de negócio, não
+    restrição de desenvolvimento.
+  - Cada profissional configura seus próprios períodos recorrentes de
+    atendimento; as consultas utilizam slots fixos de 30 minutos alinhados a
+    partir do início de cada período.
+  - Estados possíveis: AGENDADA, CONFIRMADA, CANCELADA, REALIZADA, FALTOU.
+    Consultas ativas (AGENDADA e CONFIRMADA) não podem se sobrepor para o
+    profissional nem para o paciente; CANCELADA libera o slot.
+  - Reagendamento cancela a consulta anterior e cria a nova na mesma operação.
     Se o novo horário estiver indisponível ou houver falha, a consulta original
     deve ser preservada.
   - Registrar o agendamento e receber a confirmação do paciente são operações
-    distintas. A consulta é criada como AGENDADA, ainda aguardando confirmação.
+    distintas. A consulta é criada como AGENDADA e permanece válida reservando
+    o horário mesmo se o paciente não confirmar antecipadamente.
+  - Limite do paciente: máximo de 2 consultas ativas no mesmo dia e 1 consulta
+    ativa futura por especialidade.
 
 4. Restrições relevantes
   - Dados de saúde: LGPD (acesso restrito, mínimo de dados sensíveis)
@@ -56,10 +64,12 @@ FASE 1 - REQUISITOS E ASRs
 
   ASR-01 Consistência / integridade de agendamento (conflito de horário)
     "Duas solicitações concorrentes para o mesmo slot de um profissional
-     NUNCA podem resultar em duas consultas confirmadas. Uma delas deve
+     NUNCA podem resultar em duas consultas ativas. Uma delas deve
      receber erro de conflito."
-    Influência: slots de 30 minutos alinhados, transações, restrição única no
-    banco e onde fica a regra.
+    Influência: slots de 30 minutos alinhados (discretização que torna
+    (profissional/paciente, inicio) suficiente sem sobreposição parcial),
+    transações, restrição única parcial no banco e validação em AgendaProfissional
+    e AgendaPaciente.
 
   ASR-02 Modificabilidade do canal de notificação
     "Trocar o canal de notificação (e-mail -> WhatsApp/SMS) deve exigir
@@ -95,35 +105,38 @@ adaptador fake de ServicoAutenticacao. Não é necessário implementar login com
 FASE 2 - MODELO DE DOMÍNIO E RESPONSABILIDADES
 
 1. Conceitos candidatos
-  Paciente, Profissional, Especialidade, Agenda (de um profissional),
-  Disponibilidade/HorarioDeAtendimento, Slot/Horario, Consulta,
+  Paciente, Profissional, Especialidade, AgendaProfissional, AgendaPaciente,
+  HorarioAtendimento (recorrente), Slot / PeriodoConsulta, Consulta,
   StatusConsulta (AGENDADA, CONFIRMADA, CANCELADA, REALIZADA, FALTOU),
-  Bloqueio, Confirmacao, Notificacao, PoliticaDeCancelamento.
+  Bloqueio (exceção datada), Confirmacao, Notificacao, PoliticaDeCancelamento.
 
 2. Decisões de responsabilidade a documentar (com GRASP)
-  - Information Expert: quem sabe se um horário está livre? -> Agenda
-    (ela conhece consultas e bloqueios do profissional).
-  - Creator: quem cria Consulta? -> Agenda (ou serviço de aplicação que
-    delega para ela).
-  - Controller: agendamentoController (recebe agendar, cancelar, reagendar
-    e chama os casos de uso).
+  - Information Expert: quem sabe se um horário está livre? -> AgendaProfissional
+    (conhece horários de atendimento, bloqueios e consultas do profissional) e
+    AgendaPaciente (conhece consultas ativas e limites do paciente); Slot conhece
+    alinhamento e sobreposição temporal.
+  - Creator: quem cria Consulta? -> AgendarConsulta coordena a criação via
+    construtor/fábrica da própria entidade Consulta após validação do domínio.
+  - Controller: AgendamentoController (recebe requisições REST e chama casos de uso).
   - Low Coupling / High Cohesion: domínio não conhece banco nem e-mail.
-  - Polymorphism / Protected Variations: Notificador, ServicoAutenticacao e
-    Repositórios como interfaces, com adaptadores concretos na infraestrutura.
-  - Pure Fabrication: serviços de aplicação e adaptadores de infraestrutura.
-  - UnidadeDeTrabalho: coordenar a transação de consulta e notificação pendente;
-    também preservar a atomicidade do reagendamento, quando implementado.
+  - Polymorphism / Protected Variations: Notificador, ServicoAutenticacao,
+    PoliticaDeCancelamento, Slot e Repositórios como contratos/abstrações.
+  - Pure Fabrication: repositórios, UnidadeDeTrabalho e casos de uso.
+  - UnidadeDeTrabalho: coordenar a transação compartilhada entre ConsultaRepositorio
+    e NotificacaoPendenteRepositorio (mantidos separados pelo SRP); também
+    preservar a atomicidade do reagendamento.
   - Processamento de notificações: recuperar pendências, usar Notificador,
     registrar o resultado do envio e manter falhas disponíveis para reenvio.
 
 3.3 SOLID
-  - SRP: Agenda cuida de disponibilidade; caso de uso orquestra; repositório
-    persiste.
-  - OCP: PoliticaDeCancelamento como estratégia (novas regras sem alterar
-    o caso de uso).
-  - DIP: casos de uso dependem de interfaces (Notificador, ConsultaRepositorio).
-  - ISP: interfaces pequenas (Notificador só envia; RepositorioDeConsultas
-    só o necessário).
+  - SRP: AgendaProfissional e AgendaPaciente cuidam de disponibilidade/limites;
+    Slot cuida da regra temporal; caso de uso orquestra; cada repositório persiste
+    seu agregado/recurso separadamente.
+  - OCP: PoliticaDeCancelamento como estratégia (24h geral, 72h dentista, isenção
+    para profissional) e Notificador extensível sem alterar casos de uso.
+  - DIP: casos de uso dependem de interfaces (Notificador, ConsultaRepositorio, etc.).
+  - ISP: interfaces pequenas (Notificador só envia; ConsultaRepositorio separado de
+    NotificacaoPendenteRepositorio).
   - LSP: SMSNotificador e EmailNotificador substituíveis entre si.
 
 3.4 Análise de coesão e acoplamento
@@ -201,9 +214,11 @@ FASE 3 - ARQUITETURA, ALTERNATIVAS E ADRs
 Obrigatórios: classes, sequência, comunicação, componentes/pacotes.
 
 Conteúdo sugerido:
-  - classes.puml: Paciente, Profissional, Agenda, Consulta, Bloqueio,
-    StatusConsulta, interfaces ConsultaRepositorio/AgendaRepositorio/
-    NotificacaoPendenteRepositorio/UnidadeDeTrabalho/Notificador/
+  - classes.puml: Paciente, Profissional, Especialidade, Slot,
+    AgendaProfissional, AgendaPaciente, HorarioAtendimento, Consulta, Bloqueio,
+    StatusConsulta, PoliticaDeCancelamento, interfaces ConsultaRepositorio /
+    AgendaRepositorio / PacienteRepositorio / ProfissionalRepositorio /
+    NotificacaoPendenteRepositorio / UnidadeDeTrabalho / Notificador /
     ServicoAutenticacao, casos de uso, implementações de infra (marcadas).
   - sequencia.puml: Agendar Consulta (feliz) + fragmento alt para
     "horário indisponível/conflito" (+ opcional: falha do notificador).
@@ -227,15 +242,15 @@ Requisitos mínimos do enunciado e planejamento de como cumprir:
 
   1. Caso de uso que MODIFICA estado: AgendarConsulta
      (opcional extra: CancelarConsulta/ReagendarConsulta)
-  2. Uma CONSULTA: ConsultarHorariosDisponiveis
+  2. Uma CONSULTA: ConsultarDisponibilidade
   3. Fluxo ALTERNATIVO/ERRO relevante: horário já ocupado/bloqueado
-     (HorarioIndisponivelError), e/ou cancelamento fora do prazo
-  4. PERSISTÊNCIA: SQLite com transações e restrição única
-     (profissional_id, inicio) para consultas ativas, com slots de 30 minutos
+     (HorarioIndisponivelError), conflito/limite do paciente e/ou cancelamento fora do prazo
+  4. PERSISTÊNCIA: SQLite com transações e restrições únicas parciais
+     (profissional_id, inicio) e (paciente_id, inicio) para consultas ativas, com slots de 30 minutos
      alinhados.
      Consulta e notificação pendente devem ser gravadas na mesma transação.
   5. DEPENDÊNCIAS EXTERNAS simuladas: Notificador e ServicoAutenticacao.
-     A integração de autenticação dos profissionais e estagiários usa o fake;
+     A integração de autenticação dos profissionais e estagiários usa ServicoAutenticacaoFake;
      as notificações pendentes são processadas posteriormente com NotificadorFake.
 
 Não fazer (conforme seção 11 do enunciado): login completo, CRUD de tudo,
@@ -258,5 +273,12 @@ Sugestão:
     e-mail (assunto, HTML) - mitigar com mensagem neutra.
 
   Mudança 2: SQLite -> PostgreSQL (ou outro mecanismo de persistência)
-    Afetados: adaptador de repositório, scripts de schema, configuração
+    Afetados: adaptador de repositório, UnidadeDeTrabalho, scripts de schema, configuração
     Inalterados: domínio, casos de uso
+
+  Mudança 3: Slots fixos alinhados de 30 min -> Slots dinâmicos desalinhados (inicio, fim)
+    Afetados: no domínio, apenas Slot, AgendaProfissional e AgendaPaciente
+              (cálculo de interseção); na infra, substituir índice único
+              (participante_id, inicio) por verificação de intervalo em transação
+              ou restrição EXCLUDE USING gist (no PostgreSQL)
+    Inalterados: casos de uso (AgendarConsulta), controllers e notificações
