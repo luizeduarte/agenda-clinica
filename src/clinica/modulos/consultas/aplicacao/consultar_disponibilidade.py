@@ -1,5 +1,4 @@
 """Caso de uso ``ConsultarDisponibilidade`` (RF02)."""
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 
@@ -19,8 +18,8 @@ class DisponibilidadeDoProfissional:
 
 
 class ConsultarDisponibilidade:
-    def __init__(self, uow_factory: Callable[[], UnidadeDeTrabalho]) -> None:
-        self._uow_factory = uow_factory
+    def __init__(self, uow: UnidadeDeTrabalho) -> None:
+        self._uow = uow
 
     def executar(
         self,
@@ -37,7 +36,7 @@ class ConsultarDisponibilidade:
         if (profissional_id is None) == (especialidade is None):
             raise ValueError("Informe profissional_id ou especialidade, mas não ambos.")
 
-        with self._uow_factory() as uow:
+        with self._uow as uow:
             if profissional_id is not None:
                 profissional = uow.profissionais.obter_por_id(profissional_id)
                 if profissional is None:

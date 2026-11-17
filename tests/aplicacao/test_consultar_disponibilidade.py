@@ -11,8 +11,8 @@ from tests.aplicacao.conftest import AGORA, TERCA, dt
 
 
 @pytest.fixture
-def consultar(uow_factory):
-    return ConsultarDisponibilidade(uow_factory)
+def consultar(uow):
+    return ConsultarDisponibilidade(uow)
 
 
 def inicios(disponibilidade):
@@ -28,8 +28,8 @@ def test_por_profissional_lista_todos_os_slots_do_dia(consultar):
     assert inicios(resultado)[-1] == dt(11, 30)
 
 
-def test_desconta_consultas_ativas_e_bloqueios(consultar, uow_factory, banco):
-    AgendarConsulta(uow_factory, relogio=lambda: AGORA).executar(
+def test_desconta_consultas_ativas_e_bloqueios(consultar, uow, banco):
+    AgendarConsulta(uow, relogio=lambda: AGORA).executar(
         AgendarConsultaComando(7, 10, dt(8, 30))
     )
     banco.bloqueios.append((10, Bloqueio(dt(9, 0), dt(10, 0), "reunião")))
@@ -39,8 +39,8 @@ def test_desconta_consultas_ativas_e_bloqueios(consultar, uow_factory, banco):
     assert inicios(resultado) == [dt(8, 0), dt(10, 0), dt(10, 30), dt(11, 0), dt(11, 30)]
 
 
-def test_consulta_cancelada_libera_o_slot(consultar, uow_factory):
-    consulta = AgendarConsulta(uow_factory, relogio=lambda: AGORA).executar(
+def test_consulta_cancelada_libera_o_slot(consultar, uow):
+    consulta = AgendarConsulta(uow, relogio=lambda: AGORA).executar(
         AgendarConsultaComando(7, 10, dt(8, 30))
     )
     consulta.cancelar()
@@ -57,8 +57,8 @@ def test_por_especialidade_traz_so_os_profissionais_dela(consultar):
     assert len(resultado[0].slots) == 8
 
 
-def test_ocupacao_de_um_profissional_nao_afeta_o_outro(consultar, uow_factory):
-    AgendarConsulta(uow_factory, relogio=lambda: AGORA).executar(
+def test_ocupacao_de_um_profissional_nao_afeta_o_outro(consultar, uow):
+    AgendarConsulta(uow, relogio=lambda: AGORA).executar(
         AgendarConsultaComando(7, 10, dt(8, 0))
     )
 

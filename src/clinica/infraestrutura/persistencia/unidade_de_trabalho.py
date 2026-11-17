@@ -1,3 +1,4 @@
+import threading
 from pathlib import Path
 from typing import Self
 
@@ -14,48 +15,82 @@ from clinica.infraestrutura.persistencia.notificacao_pendente_repositorio import
 
 
 class SQLiteUnidadeDeTrabalho:
-    """Implementa ``UnidadeDeTrabalho``: uma conexão e uma transação por ``with``.
+    """Implementa ``UnidadeDeTrabalho`` com uma transação SQLite por ``with``.
 
-    Ao entrar, abre a conexão e inicia ``BEGIN IMMEDIATE`` (ADR-003): o bloqueio
-    de escrita é tomado *antes* das verificações de disponibilidade, então duas
-    reservas concorrentes são serializadas. Todos os repositórios usam a mesma
-    conexão, logo participam da mesma transação (ADR-002).
+    Ao entrar, abre uma conexão e inicia ``BEGIN IMMEDIATE`` (ADR-003): o
+    bloqueio de escrita é tomado *antes* das verificações de disponibilidade,
+    então duas reservas concorrentes são serializadas. Todos os repositórios
+    usam essa conexão, logo participam da mesma transação (ADR-002).
+
+    Uma única instância atende todas as requisições. Para uma não interferir na
+    outra, a conexão fica guardada **por thread**: cada thread que entra no
+    ``with`` tem a sua conexão e a sua transação.
 
     Sair sem ``commit()``, ou por exceção, desfaz tudo.
     """
 
     def __init__(self, caminho: str | Path) -> None:
         self._caminho = caminho
-        self._con = None
-        self._aberta = False
+        self._local = threading.local()
+
+    # --- ciclo da transação ------------------------------------------------
 
     def __enter__(self) -> Self:
-        self._con = abrir_conexao(self._caminho)
+        if getattr(self._local, "conexao", None) is not None:
+            raise RuntimeError("Esta unidade de trabalho já está aberta nesta thread.")
+        conexao = abrir_conexao(self._caminho)
         try:
-            self._con.execute("BEGIN IMMEDIATE")
+            conexao.execute("BEGIN IMMEDIATE")
         except Exception:
-            self._con.close()
+            conexao.close()
             raise
-        self._aberta = True
-        self.consultas = SQLiteConsultaRepositorio(self._con)
-        self.agendas = SQLiteAgendaRepositorio(self._con)
-        self.pacientes = SQLitePacienteRepositorio(self._con)
-        self.profissionais = SQLiteProfissionalRepositorio(self._con)
-        self.notificacoes_pendentes = SQLiteNotificacaoPendenteRepositorio(self._con)
+        self._local.conexao = conexao
+        self._local.aberta = True
         return self
 
     def __exit__(self, tipo_exc, exc, tb) -> None:
+        conexao = self._local.conexao
         try:
             self.rollback()
         finally:
-            self._con.close()
+            conexao.close()
+            self._local.conexao = None
 
     def commit(self) -> None:
-        if self._aberta:
-            self._con.execute("COMMIT")
-            self._aberta = False
+        if self._local.aberta:
+            self._local.conexao.execute("COMMIT")
+            self._local.aberta = False
 
     def rollback(self) -> None:
-        if self._aberta:
-            self._con.execute("ROLLBACK")
-            self._aberta = False
+        if self._local.aberta:
+            self._local.conexao.execute("ROLLBACK")
+            self._local.aberta = False
+
+    # --- repositórios (todos sobre a conexão desta thread) -----------------
+
+    @property
+    def _conexao(self):
+        conexao = getattr(self._local, "conexao", None)
+        if conexao is None:
+            raise RuntimeError("Use a unidade de trabalho dentro de um bloco 'with'.")
+        return conexao
+
+    @property
+    def consultas(self) -> SQLiteConsultaRepositorio:
+        return SQLiteConsultaRepositorio(self._conexao)
+
+    @property
+    def agendas(self) -> SQLiteAgendaRepositorio:
+        return SQLiteAgendaRepositorio(self._conexao)
+
+    @property
+    def pacientes(self) -> SQLitePacienteRepositorio:
+        return SQLitePacienteRepositorio(self._conexao)
+
+    @property
+    def profissionais(self) -> SQLiteProfissionalRepositorio:
+        return SQLiteProfissionalRepositorio(self._conexao)
+
+    @property
+    def notificacoes_pendentes(self) -> SQLiteNotificacaoPendenteRepositorio:
+        return SQLiteNotificacaoPendenteRepositorio(self._conexao)

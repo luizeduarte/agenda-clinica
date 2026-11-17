@@ -28,18 +28,14 @@ class AgendarConsultaComando:
 
 
 class AgendarConsulta:
-    """Coordena o agendamento; as regras ficam no domínio.
-
-    Recebe uma *fábrica* de ``UnidadeDeTrabalho``: cada execução tem a sua
-    transação, o que permite requisições concorrentes (ASR-01).
-    """
+    """Coordena o agendamento; as regras ficam no domínio."""
 
     def __init__(
         self,
-        uow_factory: Callable[[], UnidadeDeTrabalho],
+        uow: UnidadeDeTrabalho,
         relogio: Callable[[], datetime] = datetime.now,
     ) -> None:
-        self._uow_factory = uow_factory
+        self._uow = uow
         self._relogio = relogio
 
     def executar(self, comando: AgendarConsultaComando) -> Consulta:
@@ -54,7 +50,9 @@ class AgendarConsulta:
         """
         slot = Slot.a_partir_de(comando.inicio)
 
-        with self._uow_factory() as uow:
+        # Consulta e notificação pendente só valem juntas, no commit (ver
+        # UnidadeDeTrabalho). Qualquer erro antes dele desfaz as duas.
+        with self._uow as uow:
             paciente = uow.pacientes.obter_por_id(comando.paciente_id)
             if paciente is None:
                 raise EntidadeNaoEncontradaError("Paciente não encontrado.")
