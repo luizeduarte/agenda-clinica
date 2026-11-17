@@ -97,6 +97,11 @@ para isolar os módulos, como as notificações (ASR-02, RF08). Microsserviços 
 em bancos diferentes a verificação da agenda e a gravação da consulta (RN01,
 RN04), o que exige coordenação distribuída.
 
+Com isso, a decisão prioriza consistência (ASR-01) e modificabilidade (ASR-02),
+com implantação e operação simples. Em troca, aceita que uma falha no processo
+afete todos os módulos, que o sistema só escale por inteiro e que as fronteiras
+entre módulos dependam de disciplina, já que o banco é compartilhado.
+
 ## 2. Eixo 2 — Organização interna
 
 A partir da decisão por um monólito modular, é preciso decidir a organização interna do sistema.
@@ -146,12 +151,18 @@ depende dos adaptadores.
 **Camadas com portas e adaptadores.** O custo extra em interfaces é compensado
 pelas portas que respondem diretamente a requisitos, como por exemplo `Notificador` (ASR-02, ASR-03) e `ServicoAutenticacao` (restrição 5.2).
 
+Com isso, a decisão prioriza modificabilidade e testabilidade. Em troca, exige mais
+interfaces e adaptadores e aumenta a indireção no código. Para conter esse custo,
+só criamos portas onde há uma variação prevista nos requisitos (canal de
+notificação, serviço de autenticação, mecanismo de persistência), e não uma
+porta para cada classe.
+
 ---
 
 ## 3. ASRs, decisões e trade-offs
 
-| ASR | Decisão favorecida | Trade-off |
-|---|---|---|
-| **ASR-01 — Consistência** | Monólito modular com transação local e restrições de unicidade no mesmo banco; verificação de disponibilidade e gravação da reserva em uma única transação (ADR-001, ADR-003). | Escritas serializadas no banco; escala conjunta e falha no processo afeta todos os módulos. |
-| **ASR-02 — Modificabilidade** | Módulo `Notificacoes` e porta `Notificador`; troca de canal por adaptador (ADR-002, ADR-004). | Mais interfaces e indireção. |
-| **ASR-03 — Resiliência** | Pendência gravada junto da consulta e enviada depois, sem acoplamento temporal com o canal (ADR-002). | Atraso na notificação; entrega *at-least-once* pode duplicar mensagens (risco aceito); consultas e pendências presas ao mesmo banco. |
+| ASR | Decisão favorecida | Prioriza | Pode prejudicar ou exigir |
+|---|---|---|---|
+| **ASR-01 — Consistência** | Monólito modular com transação local e restrições de unicidade no mesmo banco; verificação de disponibilidade e gravação da reserva em uma única transação (ADR-001, ADR-003). | Consistência dos agendamentos sob concorrência. | Desempenho sob carga, pois as escritas são serializadas no banco; escalabilidade, pois o sistema escala por inteiro; disponibilidade, pois uma falha no processo afeta todos os módulos. |
+| **ASR-02 — Modificabilidade** | Módulo `Notificacoes` e porta `Notificador`; troca de canal por adaptador (ADR-002, ADR-004). | Modificabilidade do canal e testabilidade, com notificador simulado. | Mais interfaces e indireção, o que aumenta a complexidade estrutural e o custo de desenvolvimento. |
+| **ASR-03 — Resiliência** | Fila de notificações implementada como tabela no mesmo banco: a pendência é gravada junto da consulta e enviada depois, sem acoplamento temporal com o canal (ADR-002). | Disponibilidade do agendamento e confiabilidade da entrega (falhas registradas e reenvio). | Notificação não imediata; possível mensagem duplicada, pois a entrega é *at-least-once* (risco aceito); monitoramento da fila; consultas e fila presas ao mesmo banco, disputando sua capacidade. |

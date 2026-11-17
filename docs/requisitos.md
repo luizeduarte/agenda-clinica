@@ -65,24 +65,48 @@ No protótipo, a autenticação será simulada pelo adaptador `ServicoAutenticac
 
 ### ASR-01 - Consistência dos agendamentos
 
-- **Cenário:** duas solicitações concorrentes tentam ocupar o mesmo slot de um profissional, ou o mesmo paciente tenta reservar simultaneamente slots coincidentes com profissionais diferentes (ou violar seu limite de reservas ativas).
-- **Resposta esperada:** no máximo uma reserva conflitante é efetivada; a outra solicitação recebe uma resposta de conflito, sem criar consulta ou notificação indevida.
-- **Critério verificável:** testes com requisições concorrentes não devem produzir duas consultas `AGENDADA` ou `CONFIRMADA` para o mesmo `(profissional, início)` nem para o mesmo `(paciente, início)`.
-- **Impacto arquitetural:** a `AgendaProfissional` avalia a disponibilidade do profissional e a `AgendaPaciente` avalia conflitos e limites do paciente no domínio, enquanto a persistência garante atomicidade e restrições únicas no banco. Como as consultas são discretizadas em slots fixos e alinhados (RN02), não há sobreposição parcial entre horários, tornando os pares `(profissional, início)` e `(paciente, início)` suficientes para detectar conflitos e impor restrições únicas parciais sob transações de escrita.
+**Atributo de qualidade:** consistência (integridade dos dados sob concorrência).
+
+| Elemento | Cenário |
+|---|---|
+| **Fonte do estímulo** | Dois ou mais pacientes. |
+| **Estímulo** | Solicitam ao mesmo tempo o mesmo slot de um profissional, ou o mesmo paciente solicita ao mesmo tempo slots coincidentes com profissionais diferentes. |
+| **Ambiente** | Operação normal, com várias solicitações de agendamento processadas simultaneamente. |
+| **Artefato afetado** | Caso de uso de agendamento e persistência das consultas. |
+| **Resposta esperada** | Apenas uma das reservas conflitantes é efetivada. As demais recebem erro de conflito, sem criar consulta nem notificação. |
+| **Medida da resposta** | Em 100% das execuções de um teste com várias solicitações simultâneas para o mesmo horário, existe no máximo uma consulta ativa (`AGENDADA` ou `CONFIRMADA`) por `(profissional, início)` e por `(paciente, início)`. |
+
+**Impacto arquitetural:** A `AgendaProfissional` avalia a disponibilidade do profissional e a `AgendaPaciente` avalia conflitos e limites do paciente no domínio, enquanto a persistência garante atomicidade e restrições únicas no banco. Como as consultas são discretizadas em slots fixos e alinhados (RN02), não há sobreposição parcial entre horários, tornando os pares `(profissional, início)` e `(paciente, início)` suficientes para detectar conflitos e impor restrições únicas parciais sob transações de escrita.
 
 ### ASR-02 - Modificabilidade das notificações
 
-- **Cenário:** substituir o envio por e-mail por outro canal (por exemplo, SMS ou WhatsApp).
-- **Resposta esperada:** as regras de domínio e o fluxo de agendamento permanecem inalterados; muda-se apenas o adaptador do canal e, quando necessário, a configuração de sua seleção.
-- **Critério verificável:** substituir `NotificadorFake` por outro adaptador que implemente `Notificador` sem modificar `AgendaProfissional`, `AgendaPaciente`, `Consulta`, `AgendarConsulta` ou a lógica de processamento das notificações.
-- **Impacto arquitetural:** contrato `Notificador`, inversão de dependência e composição dos adaptadores na infraestrutura.
+**Atributo de qualidade:** modificabilidade.
+
+| Elemento | Cenário |
+|---|---|
+| **Fonte do estímulo** | Coordenação da clínica. |
+| **Estímulo** | Decide trocar o canal de notificação, de e-mail para WhatsApp ou SMS. |
+| **Ambiente** | Sistema em operação. |
+| **Artefato afetado** | Módulo de notificações (adaptador do canal de envio). |
+| **Resposta esperada** | Um novo adaptador implementa o contrato `Notificador`. As regras de agendamento, os casos de uso e o processamento da fila de notificações não são alterados. |
+| **Medida da resposta** | A mudança fica restrita ao módulo de notificações e à configuração da aplicação: nenhuma alteração em `AgendaProfissional`, `AgendaPaciente`, `Consulta`, `AgendarConsulta` ou no processador da fila, e os testes existentes de domínio e de aplicação continuam passando sem modificação. |
+
+**Impacto arquitetural:** contrato `Notificador`, inversão de dependência e composição dos adaptadores na infraestrutura.
 
 ### ASR-03 - Resiliência a falhas no envio de notificações
 
-- **Cenário:** o serviço de notificação está indisponível no momento do agendamento.
-- **Resposta esperada:** uma consulta validada é persistida e informada ao usuário independentemente da falha externa; a notificação permanece pendente para tentativa posterior.
-- **Critério verificável:** ao simular falha no `Notificador`, a consulta já registrada permanece persistida e a notificação mantém estado rastreável para reenvio.
-- **Impacto arquitetural:** registrar **consulta e notificação pendente na mesma transação** e enviar posteriormente por processamento separado. A proposta utiliza tabela de pendências no mesmo banco transacional, sem exigir um broker de mensagens externo.
+**Atributo de qualidade:** disponibilidade e confiabilidade (tolerância a falhas do serviço externo).
+
+| Elemento | Cenário |
+|---|---|
+| **Fonte do estímulo** | Serviço externo de envio de mensagens. |
+| **Estímulo** | Fica indisponível. |
+| **Ambiente** | Operação normal do sistema. |
+| **Artefato afetado** | Caso de uso de agendamento, fila de notificações e processador de envio. |
+| **Resposta esperada** | A consulta é gravada e o agendamento é confirmado ao paciente. A notificação permanece na fila, a falha é registrada e o envio é tentado novamente depois. |
+| **Medida da resposta** | 100% dos agendamentos válidos são concluídos mesmo com o canal indisponível. Toda tentativa com falha fica registrada (estado, número de tentativas e último erro), e nenhuma notificação é perdida: ela continua na fila até ser enviada. |
+
+**Impacto arquitetural:** registrar **consulta e notificação pendente na mesma transação** e enviar posteriormente por processamento separado. A proposta utiliza tabela de pendências no mesmo banco transacional, sem exigir um broker de mensagens externo.
 
 > **Terminologia:** o estado `CONFIRMADA` significa confirmação do **paciente** (RF07). A resposta bem-sucedida de RF03 informa apenas que o **agendamento foi registrado** (`AGENDADA`). Ambos `AGENDADA` e `CONFIRMADA` ocupam o slot.
 
