@@ -56,9 +56,14 @@ class ConflitoDePersistenciaError(Exception):
     """Restrição única do banco violada na gravação (ASR-01).
 
     Levantada pelos repositórios quando duas reservas concorrentes disputam o
-    mesmo ``(participante, inicio)``. O caso de uso a converte em
-    ``HorarioIndisponivelError`` ou ``ConflitoDoPacienteError``.
+    mesmo ``(participante, inicio)``. ``participante`` é ``"profissional"`` ou
+    ``"paciente"``. O caso de uso a converte em ``HorarioIndisponivelError`` ou
+    ``ConflitoDoPacienteError``.
     """
+
+    def __init__(self, participante: str) -> None:
+        super().__init__(f"Conflito de horário do {participante}.")
+        self.participante = participante
 
 
 class FalhaNoEnvioError(Exception):
