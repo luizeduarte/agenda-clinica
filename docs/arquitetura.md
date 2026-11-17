@@ -26,6 +26,8 @@ O sistema será dividido em módulos conforme suas responsabilidades de negócio
 
 Os módulos pertencem à mesma aplicação e se comunicam por chamadas internas, sem a necessidade de requisições HTTP entre eles.
 
+`Consultas` depende de `Agenda` (usa `Slot`) e de `Cadastros`. `Agenda` não depende de `Consultas`: `AgendaProfissional` recebe os `Slot`s ocupados, e não objetos `Consulta`, evitando um ciclo entre os módulos. O caso de uso `AgendarConsulta` extrai os slots das consultas ativas e os entrega à agenda.
+
 Cada módulo concentra responsabilidades relacionadas. As dependências entre módulos são estabelecidas por contratos e componentes de aplicação, evitando acesso direto aos detalhes internos de outros módulos.
 
 ## 3. Organização em camadas
@@ -163,7 +165,7 @@ O acesso aos dados ocorrerá por repositórios, evitando dependências diretas e
 
 ### 6.2. Controle de conflitos
 
-As consultas possuem duração fixa de 30 minutos e utilizam horários alinhados ao início dos períodos de atendimento configurados por cada profissional.
+As consultas possuem duração fixa de 30 minutos e utilizam uma grade alinhada a `:00` e `:30`, comum a todos os profissionais e pacientes (RN02). Os períodos de atendimento também devem respeitar essa grade.
 
 Antes de realizar o agendamento, o domínio verifica:
 
