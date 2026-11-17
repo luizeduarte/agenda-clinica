@@ -10,7 +10,6 @@ from enum import Enum
 class TipoNotificacao(str, Enum):
     AGENDAMENTO = "AGENDAMENTO"
     CANCELAMENTO = "CANCELAMENTO"
-    LEMBRETE = "LEMBRETE"
 
 
 class EstadoNotificacao(str, Enum):
