@@ -4,6 +4,7 @@ Imitam o comportamento relevante do banco: o índice único parcial por
 ``(participante, inicio)`` das consultas ativas e o rollback ao sair sem commit.
 """
 import copy
+import dataclasses
 from datetime import datetime
 
 from clinica.compartilhado.erros import ConflitoDePersistenciaError
@@ -96,6 +97,7 @@ class AgendaRepositorioEmMemoria:
         ]
 
     def adicionar_bloqueio(self, profissional_id, bloqueio):
+        bloqueio = dataclasses.replace(bloqueio, id=self._b.novo_id())
         self._b.bloqueios.append((profissional_id, bloqueio))
         return bloqueio
 
