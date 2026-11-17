@@ -1,19 +1,17 @@
-"""Exceções do sistema.
-
-Ficam fora de qualquer módulo porque são levantadas pelo domínio, pela
-aplicação e pelas portas, e traduzidas para HTTP apenas na apresentação
-(ver ``docs/arquitetura.md`` seção 5.1).
-"""
+"""Mensagens de erro do sistema."""
 
 
 class ErroDeDominio(Exception):
     """Base de todos os erros de regra de negócio."""
 
 
-# --- Agendamento (RF03, RF06, RN02, RN03, RN04, RN08) -----------------------
+# --- Agendamento (RF03, RF06, RN02, RN03, RN04, RN08)
 
 class SlotInvalidoError(ErroDeDominio):
-    """Slot sem 30 minutos ou fora do alinhamento do período (RN02)."""
+    """Slot que não dura 30 minutos ou não começa em :00/:30 (RN02)."""
+
+class HorarioDeAtendimentoInvalidoError(ErroDeDominio):
+    """Período ou bloqueio fora da grade, invertido ou sobreposto (RN01, RN02)."""
 
 
 class HorarioIndisponivelError(ErroDeDominio):

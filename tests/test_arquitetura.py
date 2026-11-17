@@ -40,6 +40,17 @@ def test_camadas_internas_nao_dependem_de_infraestrutura_nem_de_tecnologia():
     assert not violacoes, "\n".join(violacoes)
 
 
+def test_agenda_nao_depende_de_consultas():
+    """`consultas` usa `Slot` de `agenda`; o inverso criaria um ciclo."""
+    violacoes = [
+        f"{caminho.relative_to(RAIZ)} importa {nome}"
+        for caminho in (RAIZ / "modulos" / "agenda").rglob("*.py")
+        for nome in _imports(caminho)
+        if nome.startswith("clinica.modulos.consultas")
+    ]
+    assert not violacoes, "\n".join(violacoes)
+
+
 def test_todos_os_modulos_importam():
     for info in pkgutil.walk_packages(clinica.__path__, "clinica."):
         importlib.import_module(info.name)
