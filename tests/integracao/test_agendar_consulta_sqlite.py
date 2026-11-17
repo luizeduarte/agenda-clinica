@@ -6,7 +6,7 @@ from datetime import datetime
 import pytest
 
 from clinica.compartilhado.erros import ConflitoDoPacienteError, HorarioIndisponivelError
-from clinica.infraestrutura.persistencia import criar_uow_factory, inicializar_banco
+from clinica.infraestrutura.persistencia import SQLiteUnidadeDeTrabalho, inicializar_banco
 from clinica.infraestrutura.persistencia.conexao import abrir_conexao
 from clinica.infraestrutura.persistencia.dados_exemplo import popular_dados_de_exemplo
 from clinica.modulos.consultas.aplicacao.agendar_consulta import (
@@ -33,7 +33,7 @@ def caminho(tmp_path):
 
 @pytest.fixture
 def agendar(caminho):
-    return AgendarConsulta(criar_uow_factory(caminho), relogio=lambda: AGORA)
+    return AgendarConsulta(SQLiteUnidadeDeTrabalho(caminho), relogio=lambda: AGORA)
 
 
 def consultas_ativas(caminho):
@@ -74,25 +74,32 @@ def test_horario_ocupado_nao_grava_nada_alem_da_primeira(agendar, caminho):
 
 
 def test_falha_ao_gravar_a_pendencia_desfaz_a_consulta(caminho):
-    fabrica = criar_uow_factory(caminho)
+    class UnidadeComDefeito:
+        """Delega à unidade real, mas a gravação da pendência falha."""
 
-    class Defeituosa:
         def __init__(self):
-            self._uow = fabrica()
+            self._uow = SQLiteUnidadeDeTrabalho(caminho)
 
         def __enter__(self):
             self._uow.__enter__()
-            self._uow.notificacoes_pendentes.adicionar = self._falha
-            return self._uow
+            return self
 
         def __exit__(self, *args):
             return self._uow.__exit__(*args)
 
-        @staticmethod
-        def _falha(_pendente):
-            raise RuntimeError("banco indisponível")
+        def __getattr__(self, nome):
+            return getattr(self._uow, nome)
 
-    agendar = AgendarConsulta(Defeituosa, relogio=lambda: AGORA)
+        @property
+        def notificacoes_pendentes(self):
+            class Falha:
+                @staticmethod
+                def adicionar(_pendente):
+                    raise RuntimeError("banco indisponível")
+
+            return Falha()
+
+    agendar = AgendarConsulta(UnidadeComDefeito(), relogio=lambda: AGORA)
 
     with pytest.raises(RuntimeError):
         agendar.executar(AgendarConsultaComando(7, 10, inicio(10)))
@@ -103,7 +110,7 @@ def test_falha_ao_gravar_a_pendencia_desfaz_a_consulta(caminho):
 def test_disponibilidade_reflete_o_que_foi_agendado(agendar, caminho):
     agendar.executar(AgendarConsultaComando(7, 10, inicio(8, 30)))
 
-    (resultado,) = ConsultarDisponibilidade(criar_uow_factory(caminho)).executar(
+    (resultado,) = ConsultarDisponibilidade(SQLiteUnidadeDeTrabalho(caminho)).executar(
         TERCA.date(), profissional_id=10
     )
 
@@ -140,7 +147,7 @@ def test_asr01_pacientes_diferentes_disputam_o_mesmo_horario(caminho):
         "INSERT INTO paciente VALUES (?, ?, ?)", [(20 + i, f"P{i}", f"p{i}@x") for i in range(8)]
     )
     con.close()
-    agendar = AgendarConsulta(criar_uow_factory(caminho), relogio=lambda: AGORA)
+    agendar = AgendarConsulta(SQLiteUnidadeDeTrabalho(caminho), relogio=lambda: AGORA)
 
     resultados = _disparar_em_paralelo(
         [
@@ -157,7 +164,7 @@ def test_asr01_pacientes_diferentes_disputam_o_mesmo_horario(caminho):
 
 def test_asr01_mesmo_paciente_com_profissionais_diferentes_no_mesmo_horario(caminho):
     """O paciente não pode ficar em dois lugares ao mesmo tempo (RN03)."""
-    agendar = AgendarConsulta(criar_uow_factory(caminho), relogio=lambda: AGORA)
+    agendar = AgendarConsulta(SQLiteUnidadeDeTrabalho(caminho), relogio=lambda: AGORA)
 
     resultados = _disparar_em_paralelo(
         [
@@ -172,7 +179,7 @@ def test_asr01_mesmo_paciente_com_profissionais_diferentes_no_mesmo_horario(cami
 
 
 def test_asr01_horarios_diferentes_nao_se_atrapalham(caminho):
-    agendar = AgendarConsulta(criar_uow_factory(caminho), relogio=lambda: AGORA)
+    agendar = AgendarConsulta(SQLiteUnidadeDeTrabalho(caminho), relogio=lambda: AGORA)
 
     resultados = _disparar_em_paralelo(
         [

@@ -17,11 +17,12 @@ from clinica.modulos.consultas.aplicacao.agendar_consulta import (
 from clinica.modulos.consultas.dominio.consulta import StatusConsulta
 from clinica.modulos.notificacoes.dominio.notificacao import EstadoNotificacao, TipoNotificacao
 from tests.aplicacao.conftest import AGORA, dt
+from tests.aplicacao.fakes import UnidadeDeTrabalhoEmMemoria
 
 
 @pytest.fixture
-def agendar(uow_factory):
-    return AgendarConsulta(uow_factory, relogio=lambda: AGORA)
+def agendar(uow):
+    return AgendarConsulta(uow, relogio=lambda: AGORA)
 
 
 def comando(paciente=7, profissional=10, hora=10, minuto=0):
@@ -122,15 +123,15 @@ class TestFluxosAlternativos:
 class TestConsistencia:
     """ASR-01 e atomicidade (ASR-03) vistos pelo caso de uso."""
 
-    def test_perda_da_corrida_no_banco_vira_horario_indisponivel(self, uow_factory, banco):
+    def test_perda_da_corrida_no_banco_vira_horario_indisponivel(self, banco):
         """Duas requisições passam pela checagem em memória; o índice único barra a segunda."""
-        agendar = AgendarConsulta(uow_factory, relogio=lambda: AGORA)
+        agendar = AgendarConsulta(UnidadeDeTrabalhoEmMemoria(banco), relogio=lambda: AGORA)
         agendar.executar(comando(paciente=7))
 
-        uow = uow_factory()
+        uow = UnidadeDeTrabalhoEmMemoria(banco)
         leitura_antiga = uow.consultas.listar_ativas_do_profissional
         uow.consultas.listar_ativas_do_profissional = lambda *a, **k: []  # leitura obsoleta
-        concorrente = AgendarConsulta(lambda: uow, relogio=lambda: AGORA)
+        concorrente = AgendarConsulta(uow, relogio=lambda: AGORA)
 
         with pytest.raises(HorarioIndisponivelError, match="outra reserva"):
             concorrente.executar(comando(paciente=8))
@@ -138,25 +139,25 @@ class TestConsistencia:
 
         assert len(banco.consultas) == 1
 
-    def test_perda_da_corrida_do_paciente_vira_conflito_do_paciente(self, uow_factory, banco):
-        agendar = AgendarConsulta(uow_factory, relogio=lambda: AGORA)
+    def test_perda_da_corrida_do_paciente_vira_conflito_do_paciente(self, banco):
+        agendar = AgendarConsulta(UnidadeDeTrabalhoEmMemoria(banco), relogio=lambda: AGORA)
         agendar.executar(comando(profissional=10))
 
-        uow = uow_factory()
+        uow = UnidadeDeTrabalhoEmMemoria(banco)
         uow.consultas.listar_ativas_do_paciente = lambda *a, **k: []  # leitura obsoleta
-        concorrente = AgendarConsulta(lambda: uow, relogio=lambda: AGORA)
+        concorrente = AgendarConsulta(uow, relogio=lambda: AGORA)
 
         with pytest.raises(ConflitoDoPacienteError):
             concorrente.executar(comando(profissional=11))
 
-    def test_falha_ao_gravar_a_pendencia_desfaz_a_consulta(self, uow_factory, banco):
-        uow = uow_factory()
+    def test_falha_ao_gravar_a_pendencia_desfaz_a_consulta(self, banco):
+        uow = UnidadeDeTrabalhoEmMemoria(banco)
 
         def falha(_pendente):
             raise RuntimeError("banco indisponível")
 
         uow.notificacoes_pendentes.adicionar = falha
-        agendar = AgendarConsulta(lambda: uow, relogio=lambda: AGORA)
+        agendar = AgendarConsulta(uow, relogio=lambda: AGORA)
 
         with pytest.raises(RuntimeError):
             agendar.executar(comando())

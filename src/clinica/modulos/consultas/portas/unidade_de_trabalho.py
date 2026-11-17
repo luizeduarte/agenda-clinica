@@ -12,19 +12,15 @@ from clinica.modulos.notificacoes.portas.notificacao_pendente_repositorio import
 
 
 class UnidadeDeTrabalho(Protocol):
-    """Transação única compartilhada pelos repositórios (ADR-002, ADR-003).
+    """Agrupa gravações para que valham todas juntas ou nenhuma (ADR-002, ADR-003).
 
-    Os repositórios continuam contratos separados (SRP); a implementação
-    concreta faz todos usarem a mesma conexão/transação.
+    Ao agendar, o sistema grava duas coisas.
+        with uow:                                    # começa o bloco
+            uow.consultas.adicionar(consulta)        # 1. rascunho
+            uow.notificacoes_pendentes.adicionar(aviso)   # 2. se falhar aqui,
+            uow.commit()                             # 3. o 1 nunca chega a valer
 
-    Uso::
-
-        with uow:                      # inicia a transação (BEGIN IMMEDIATE no SQLite)
-            uow.consultas.adicionar(c)
-            uow.notificacoes_pendentes.adicionar(p)
-            uow.commit()
-
-    Sair do ``with`` sem ``commit()`` ou por exceção faz rollback.
+    Sair do ``with`` sem ``commit()``, ou por exceção, desfaz tudo (rollback).
     """
 
     consultas: ConsultaRepositorio

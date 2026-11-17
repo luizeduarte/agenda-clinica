@@ -38,5 +38,5 @@ def banco():
 
 
 @pytest.fixture
-def uow_factory(banco):
-    return lambda: UnidadeDeTrabalhoEmMemoria(banco)
+def uow(banco):
+    return UnidadeDeTrabalhoEmMemoria(banco)
