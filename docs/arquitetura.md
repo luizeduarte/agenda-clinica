@@ -153,7 +153,7 @@ O envio de notificações será separado do processamento dos agendamentos.
 
 O caso de uso registra a consulta e uma notificação pendente na mesma transação. O envio é executado posteriormente por um componente de processamento de notificações.
 
-Esse mecanismo utiliza uma tabela de pendências no banco de dados (padrão *Transactional Outbox*), sem necessidade de um broker de mensagens externo. Por exigir atomicidade local, as implementações de `ConsultaRepositorio` e `NotificacaoPendenteRepositorio` precisam operar sobre o mesmo banco transacional. Em vez de fundir essas duas interfaces em um único repositório — o que violaria o SRP e acoplaria o módulo de consultas ao ciclo de vida das notificações —, as portas permanecem separadas e o compartilhamento da conexão/transação é coordenado na infraestrutura pela `SQLiteUnidadeDeTrabalho`.
+Esse mecanismo funciona como uma **fila de notificações**, implementada como uma tabela de pendências no próprio banco de dados (padrão *Transactional Outbox*), sem necessidade de um broker de mensagens externo. Cada pendência é uma mensagem na fila, com registro de envio, tentativas e possibilidade de reenvio. Por exigir atomicidade local, as implementações de `ConsultaRepositorio` e `NotificacaoPendenteRepositorio` precisam operar sobre o mesmo banco transacional. Em vez de fundir essas duas interfaces em um único repositório — o que violaria o SRP e acoplaria o módulo de consultas ao ciclo de vida das notificações —, as portas permanecem separadas e o compartilhamento da conexão/transação é coordenado na infraestrutura pela `SQLiteUnidadeDeTrabalho`.
 
 ## 6. Persistência e consistência
 
@@ -206,9 +206,9 @@ Todas as operações da unidade de trabalho utilizarão a mesma transação, per
 
 ## 7. Notificações
 
-### 7.1. Registro das pendências
+### 7.1. Registro na fila de notificações
 
-Após validar um agendamento, a aplicação registra uma notificação pendente juntamente com a consulta.
+Após validar um agendamento, a aplicação coloca uma notificação pendente na fila de notificações, juntamente com a consulta.
 
 Esse registro ocorrerá na mesma transação, garantindo que um agendamento persistido tenha sua notificação correspondente registrada.
 
@@ -218,7 +218,7 @@ A operação de agendamento não dependerá do sucesso do envio externo.
 
 Um componente separado será responsável por:
 
-1. Consultar notificações pendentes.
+1. Consultar as notificações pendentes na fila.
 2. Realizar o envio por meio da interface `Notificador`.
 3. Registrar o resultado da tentativa.
 4. Manter notificações com falha disponíveis para reenvio.
