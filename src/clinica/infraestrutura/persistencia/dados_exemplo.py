@@ -38,7 +38,8 @@ def popular_dados_de_exemplo(caminho: str | Path) -> None:
             )
         con.execute("COMMIT")
     except Exception:
-        con.execute("ROLLBACK")
+        if con.in_transaction:
+            con.execute("ROLLBACK")
         raise
     finally:
         con.close()

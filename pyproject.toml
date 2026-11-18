@@ -22,7 +22,12 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-clinica = ["infraestrutura/persistencia/*.sql"]
+clinica = [
+    "infraestrutura/persistencia/*.sql",
+    "api/demonstracao/*.html",
+    "api/demonstracao/estaticos/*.css",
+    "api/demonstracao/estaticos/*.js",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

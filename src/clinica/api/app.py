@@ -1,10 +1,16 @@
+from pathlib import Path
+
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from clinica.api.controllers.agendamento_controller import AgendamentoController
 from clinica.api.erros import registrar_tratadores
 from clinica.modulos.autenticacao.portas.servico_autenticacao import ServicoAutenticacao
 from clinica.modulos.consultas.aplicacao.agendar_consulta import AgendarConsulta
 from clinica.modulos.consultas.aplicacao.consultar_disponibilidade import ConsultarDisponibilidade
+
+DEMONSTRACAO = Path(__file__).with_name("demonstracao")
 
 
 def criar_app(
@@ -25,6 +31,12 @@ def criar_app(
     app.include_router(
         AgendamentoController(agendar_consulta, consultar_disponibilidade, autenticacao).criar_rotas()
     )
+    app.mount("/estaticos", StaticFiles(directory=DEMONSTRACAO / "estaticos"))
+
+    @app.get("/", include_in_schema=False)
+    def demonstracao() -> FileResponse:
+        return FileResponse(DEMONSTRACAO / "index.html", media_type="text/html")
+
     registrar_tratadores(app)
     _documentar_sem_422(app)
     return app

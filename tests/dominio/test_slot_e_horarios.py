@@ -1,4 +1,4 @@
-from datetime import date, datetime, time
+from datetime import UTC, date, datetime, time
 
 import pytest
 
@@ -39,6 +39,14 @@ class TestSlot:
         with pytest.raises(SlotInvalidoError):
             Slot.a_partir_de(datetime(2026, 12, 1, 10, 0, 5))
 
+    def test_rejeita_horario_com_fuso(self):
+        with pytest.raises(SlotInvalidoError, match="sem fuso horário"):
+            Slot.a_partir_de(dt(10).replace(tzinfo=UTC))
+
+    def test_rejeita_slot_que_ultrapassa_o_calendario(self):
+        with pytest.raises(SlotInvalidoError, match="concluir o slot"):
+            Slot.a_partir_de(datetime(9999, 12, 31, 23, 30))
+
     def test_slots_iguais_se_sobrepoem(self):
         assert Slot.a_partir_de(dt(10, 0)).sobrepoe(Slot.a_partir_de(dt(10, 0)))
 
@@ -55,6 +63,13 @@ class TestHorarioAtendimento:
         horario = HorarioAtendimento(1, time(8, 0), time(10, 0))
         inicios = [s.inicio for s in horario.slots_do_dia(TERCA)]
         assert inicios == [dt(8, 0), dt(8, 30), dt(9, 0), dt(9, 30)]
+
+    def test_gera_slot_no_fim_da_ultima_data_do_calendario(self):
+        dia = date.max
+        horario = HorarioAtendimento(dia.weekday(), time(23), time(23, 30))
+
+        (slot,) = horario.slots_do_dia(dia)
+        assert slot.fim == datetime.combine(dia, time(23, 30))
 
     def test_nao_gera_slots_em_outro_dia_da_semana(self):
         horario = HorarioAtendimento(1, time(8, 0), time(10, 0))

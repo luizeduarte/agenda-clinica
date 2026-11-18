@@ -1,3 +1,6 @@
+import sqlite3
+from contextlib import closing
+
 import pytest
 
 from clinica.infraestrutura.persistencia import SQLiteUnidadeDeTrabalho, inicializar_banco
@@ -125,6 +128,29 @@ def test_nao_aceita_abrir_duas_vezes_na_mesma_thread(caminho):
     with SQLiteUnidadeDeTrabalho(caminho) as uow:
         with pytest.raises(RuntimeError, match="já está aberta"):
             uow.__enter__()
+
+
+def test_leitura_mantem_snapshot_sem_reservar_escrita(caminho):
+    with SQLiteUnidadeDeTrabalho(caminho).leitura() as leitura:
+        assert leitura.consultas.listar_consultas_ativas_paciente(7) == []
+        with SQLiteUnidadeDeTrabalho(caminho) as escrita:
+            consulta_registrada = escrita.consultas.adicionar(consulta())
+            escrita.commit()
+        assert leitura.consultas.listar_consultas_ativas_paciente(7) == []
+
+    with SQLiteUnidadeDeTrabalho(caminho).leitura() as leitura:
+        assert leitura.consultas.listar_consultas_ativas_paciente(7) == [consulta_registrada]
+        with pytest.raises(sqlite3.OperationalError) as erro:
+            leitura.notificacoes_pendentes.adicionar(pendente())
+        assert erro.value.sqlite_errorcode == sqlite3.SQLITE_READONLY
+
+
+def test_transacao_de_escrita_reserva_o_bloqueio_ao_entrar(caminho):
+    with SQLiteUnidadeDeTrabalho(caminho), closing(abrir_conexao(caminho)) as outra:
+        outra.execute("PRAGMA busy_timeout = 0")
+        with pytest.raises(sqlite3.OperationalError) as erro:
+            outra.execute("BEGIN IMMEDIATE")
+        assert erro.value.sqlite_errorcode == sqlite3.SQLITE_BUSY
 
 
 def test_uma_instancia_compartilhada_da_a_cada_thread_a_sua_transacao(caminho):

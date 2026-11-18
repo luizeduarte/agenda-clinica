@@ -5,7 +5,10 @@ class ErroDeDominio(Exception):
     """Base de todos os erros de regra de negócio."""
 
 class SlotInvalidoError(ErroDeDominio):
-    """Slot que não dura 30 minutos ou não começa em :00/:30 (RN02)."""
+    """Horário de agendamento inválido (RN02 ou horário já iniciado)."""
+
+class FiltroDeDisponibilidadeInvalidoError(ErroDeDominio, ValueError):
+    """A consulta de disponibilidade exige exatamente um filtro válido."""
 
 class HorarioDeAtendimentoInvalidoError(ErroDeDominio):
     """Período ou bloqueio fora da grade, invertido ou sobreposto (RN01, RN02)."""

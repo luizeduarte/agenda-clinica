@@ -38,3 +38,10 @@ class NotificacaoPendente:
     tentativas: int = 0
     ultimo_erro: str | None = None
     id: int | None = None
+
+    def registrar_tentativa(self, erro: str | None) -> None:
+        self.tentativas += 1
+        if self.estado == EstadoNotificacao.ENVIADA:
+            return
+        self.estado = EstadoNotificacao.ENVIADA if erro is None else EstadoNotificacao.FALHA
+        self.ultimo_erro = erro

@@ -1,4 +1,6 @@
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Self
 
@@ -21,6 +23,7 @@ class SQLiteUnidadeDeTrabalho:
     bloqueio de escrita é tomado antes das verificações de disponibilidade,
     então duas reservas concorrentes são serializadas. Todos os repositórios
     usam essa conexão, logo participam da mesma transação (ADR-002).
+    ``leitura()`` usa ``BEGIN`` diferido e impede escritas na própria conexão.
 
     Uma única instância atende todas as requisições. Para uma não interferir na
     outra, a conexão fica guardada por thread: cada thread que entra no
@@ -34,20 +37,35 @@ class SQLiteUnidadeDeTrabalho:
         self._local = threading.local()
 
     def __enter__(self) -> Self:
+        return self._iniciar(somente_leitura=False)
+
+    @contextmanager
+    def leitura(self) -> Iterator[Self]:
+        self._iniciar(somente_leitura=True)
+        try:
+            yield self
+        finally:
+            self._encerrar()
+
+    def _iniciar(self, *, somente_leitura: bool) -> Self:
         if getattr(self._local, "conexao", None) is not None:
             raise RuntimeError("Esta unidade de trabalho já está aberta nesta thread.")
         conexao = abrir_conexao(self._caminho)
         try:
-            conexao.execute("BEGIN IMMEDIATE")
+            if somente_leitura:
+                conexao.execute("PRAGMA query_only = ON")
+            conexao.execute("BEGIN" if somente_leitura else "BEGIN IMMEDIATE")
         except Exception:
             conexao.close()
             raise
         self._local.conexao = conexao
-        self._local.aberta = True
         return self
 
     def __exit__(self, tipo_exc, exc, tb) -> None:
-        conexao = self._local.conexao
+        self._encerrar()
+
+    def _encerrar(self) -> None:
+        conexao = self._conexao
         try:
             self.rollback()
         finally:
@@ -55,14 +73,12 @@ class SQLiteUnidadeDeTrabalho:
             self._local.conexao = None
 
     def commit(self) -> None:
-        if self._local.aberta:
-            self._local.conexao.execute("COMMIT")
-            self._local.aberta = False
+        if self._conexao.in_transaction:
+            self._conexao.execute("COMMIT")
 
     def rollback(self) -> None:
-        if self._local.aberta:
-            self._local.conexao.execute("ROLLBACK")
-            self._local.aberta = False
+        if self._conexao.in_transaction:
+            self._conexao.execute("ROLLBACK")
 
     # --- repositórios (todos sobre a conexão desta thread) -----------------
 

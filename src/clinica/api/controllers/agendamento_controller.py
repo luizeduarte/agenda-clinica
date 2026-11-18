@@ -10,7 +10,7 @@ requisição tem a sua transação.
 """
 from datetime import date
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header
 
 from clinica.api.erros import (
     RESPOSTA_400,
@@ -18,6 +18,7 @@ from clinica.api.erros import (
     RESPOSTA_403,
     RESPOSTA_404,
     RESPOSTA_409,
+    RESPOSTA_500,
 )
 from clinica.api.esquemas import (
     AgendarConsultaPedido,
@@ -57,7 +58,7 @@ class AgendamentoController:
         @rotas.get(
             "/disponibilidade",
             response_model=list[DisponibilidadeResposta],
-            responses={400: RESPOSTA_400, 401: RESPOSTA_401, 404: RESPOSTA_404},
+            responses={400: RESPOSTA_400, 401: RESPOSTA_401, 404: RESPOSTA_404, 500: RESPOSTA_500},
             summary="Consultar horários disponíveis (RF02)",
             description="Informe `profissional_id` **ou** `especialidade`, mais a data.",
         )
@@ -68,12 +69,7 @@ class AgendamentoController:
             authorization: str | None = Header(default=None),
         ):
             self._identificar(authorization)
-            try:
-                resultado = self._consultar_disponibilidade.executar(
-                    dia, profissional_id, especialidade
-                )
-            except ValueError as erro:
-                raise HTTPException(status_code=400, detail=str(erro)) from erro
+            resultado = self._consultar_disponibilidade.executar(dia, profissional_id, especialidade)
             return [DisponibilidadeResposta.de(item) for item in resultado]
 
         @rotas.post(
@@ -86,6 +82,7 @@ class AgendamentoController:
                 403: RESPOSTA_403,
                 404: RESPOSTA_404,
                 409: RESPOSTA_409,
+                500: RESPOSTA_500,
             },
             summary="Agendar consulta (RF03)",
             description="Somente pacientes agendam. A consulta nasce `AGENDADA`.",
