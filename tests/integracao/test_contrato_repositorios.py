@@ -112,20 +112,20 @@ class TestConsultas:
     def test_atualizar_persiste_o_estado(self, uow):
         gravar(uow, nova_consulta())
         with uow:
-            (consulta,) = uow.consultas.listar_por_paciente(7)
+            (consulta,) = uow.consultas.listar_consultas_paciente(7)
             consulta.cancelar()
             uow.consultas.atualizar(consulta)
             uow.commit()
         with uow:
             assert uow.consultas.obter_por_id(consulta.id).status == StatusConsulta.CANCELADA
-            assert uow.consultas.listar_ativas_do_paciente(7) == []
+            assert uow.consultas.listar_consultas_ativas_paciente(7) == []
 
     def test_ativas_do_profissional_usa_intervalo_semiaberto(self, uow):
         gravar(uow, nova_consulta(hora=10))  # 10:00–10:30
         with uow:
-            dentro = uow.consultas.listar_ativas_do_profissional(10, dt(10, 15), dt(11))
-            encostado = uow.consultas.listar_ativas_do_profissional(10, dt(10, 30), dt(11))
-            outro = uow.consultas.listar_ativas_do_profissional(11, dt(9), dt(12))
+            dentro = uow.consultas.listar_consultas_ativas_profissional(10, dt(10, 15), dt(11))
+            encostado = uow.consultas.listar_consultas_ativas_profissional(10, dt(10, 30), dt(11))
+            outro = uow.consultas.listar_consultas_ativas_profissional(11, dt(9), dt(12))
         assert len(dentro) == 1
         assert encostado == []
         assert outro == []
@@ -133,7 +133,7 @@ class TestConsultas:
     def test_ativas_do_profissional_ignora_canceladas(self, uow):
         gravar(uow, nova_consulta(status=StatusConsulta.CANCELADA))
         with uow:
-            assert uow.consultas.listar_ativas_do_profissional(10, dt(0), dt(23)) == []
+            assert uow.consultas.listar_consultas_ativas_profissional(10, dt(0), dt(23)) == []
 
     def test_listagens_do_paciente(self, uow):
         gravar(
@@ -142,17 +142,17 @@ class TestConsultas:
             nova_consulta(hora=10, status=StatusConsulta.CANCELADA),
         )
         with uow:
-            assert len(uow.consultas.listar_ativas_do_paciente(7)) == 1
-            assert len(uow.consultas.listar_por_paciente(7)) == 2
+            assert len(uow.consultas.listar_consultas_ativas_paciente(7)) == 1
+            assert len(uow.consultas.listar_consultas_paciente(7)) == 2
 
-    def test_listar_por_profissional_traz_todos_os_estados(self, uow):
+    def test_listar_consultas_profissional_traz_todos_os_estados(self, uow):
         gravar(
             uow,
             nova_consulta(hora=9),
             nova_consulta(paciente=8, hora=10, status=StatusConsulta.CANCELADA),
         )
         with uow:
-            assert len(uow.consultas.listar_por_profissional(10, dt(0), dt(23))) == 2
+            assert len(uow.consultas.listar_consultas_profissional(10, dt(0), dt(23))) == 2
 
 
 class TestAgendas:

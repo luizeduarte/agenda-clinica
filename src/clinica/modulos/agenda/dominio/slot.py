@@ -35,6 +35,7 @@ class Slot:
 
     @classmethod
     def a_partir_de(cls, inicio: datetime) -> "Slot":
+        # Cria um slot de 30 minutos a partir do instante ``inicio``.
         return cls(inicio, inicio + DURACAO)
 
     def sobrepoe(self, outro: "Slot") -> bool:

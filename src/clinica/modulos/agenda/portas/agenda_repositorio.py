@@ -18,7 +18,7 @@ class AgendaRepositorio(Protocol):
     def listar_bloqueios(
         self, profissional_id: int, inicio: datetime, fim: datetime
     ) -> list[Bloqueio]:
-        """Bloqueios do profissional **e coletivos** que intersectam ``[inicio, fim)`` (RN04)."""
+        """Bloqueios do profissional que intersectam ``[inicio, fim)`` (RN04)."""
         ...
 
     def adicionar_bloqueio(self, profissional_id: int | None, bloqueio: Bloqueio) -> Bloqueio:

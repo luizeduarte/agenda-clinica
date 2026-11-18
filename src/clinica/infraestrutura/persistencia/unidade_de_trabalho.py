@@ -15,15 +15,15 @@ from clinica.infraestrutura.persistencia.notificacao_pendente_repositorio import
 
 
 class SQLiteUnidadeDeTrabalho:
-    """Implementa ``UnidadeDeTrabalho`` com uma transação SQLite por ``with``.
+    """Implementa ``UnidadeDeTrabalho`` com uma transação SQLite.
 
     Ao entrar, abre uma conexão e inicia ``BEGIN IMMEDIATE`` (ADR-003): o
-    bloqueio de escrita é tomado *antes* das verificações de disponibilidade,
+    bloqueio de escrita é tomado antes das verificações de disponibilidade,
     então duas reservas concorrentes são serializadas. Todos os repositórios
     usam essa conexão, logo participam da mesma transação (ADR-002).
 
     Uma única instância atende todas as requisições. Para uma não interferir na
-    outra, a conexão fica guardada **por thread**: cada thread que entra no
+    outra, a conexão fica guardada por thread: cada thread que entra no
     ``with`` tem a sua conexão e a sua transação.
 
     Sair sem ``commit()``, ou por exceção, desfaz tudo.
@@ -32,8 +32,6 @@ class SQLiteUnidadeDeTrabalho:
     def __init__(self, caminho: str | Path) -> None:
         self._caminho = caminho
         self._local = threading.local()
-
-    # --- ciclo da transação ------------------------------------------------
 
     def __enter__(self) -> Self:
         if getattr(self._local, "conexao", None) is not None:

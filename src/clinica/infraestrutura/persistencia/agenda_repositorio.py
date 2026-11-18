@@ -1,13 +1,8 @@
 import sqlite3
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, time
 
-from clinica.infraestrutura.persistencia.conversao import (
-    de_texto,
-    hora_de_texto,
-    hora_para_texto,
-    para_texto,
-)
+from clinica.infraestrutura.persistencia.conversao import hora_para_texto, para_texto
 from clinica.modulos.agenda.dominio.horarios import Bloqueio, HorarioAtendimento
 
 
@@ -25,7 +20,7 @@ class SQLiteAgendaRepositorio:
         )
         return [
             HorarioAtendimento(
-                l["dia_semana"], hora_de_texto(l["hora_inicio"]), hora_de_texto(l["hora_fim"])
+                l["dia_semana"], time.fromisoformat(l["hora_inicio"]), time.fromisoformat(l["hora_fim"])
             )
             for l in linhas
         ]
@@ -55,7 +50,7 @@ class SQLiteAgendaRepositorio:
             (profissional_id, para_texto(fim), para_texto(inicio)),
         )
         return [
-            Bloqueio(de_texto(l["inicio"]), de_texto(l["fim"]), l["motivo"], l["id"])
+            Bloqueio(datetime.fromisoformat(l["inicio"]), datetime.fromisoformat(l["fim"]), l["motivo"], l["id"])
             for l in linhas
         ]
 

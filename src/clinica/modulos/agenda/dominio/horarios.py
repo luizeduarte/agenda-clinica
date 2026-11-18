@@ -60,8 +60,6 @@ def validar_grade_semanal(horarios: list[HorarioAtendimento]) -> None:
 
 @dataclass(frozen=True)
 class Bloqueio:
-    """Exceção datada. ``id`` é ``None`` até ser persistido."""
-
     inicio: datetime
     fim: datetime
     motivo: str

@@ -1,4 +1,4 @@
-"""Montagem das mensagens. Texto neutro quanto ao canal (ASR-02)."""
+"""Montagem das mensagens (ASR-02)."""
 from clinica.modulos.agenda.dominio.slot import Slot
 from clinica.modulos.cadastros.dominio.cadastros import Paciente, Profissional
 from clinica.modulos.notificacoes.dominio.notificacao import Notificacao, TipoNotificacao

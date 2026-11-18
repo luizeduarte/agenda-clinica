@@ -2,7 +2,7 @@ import sqlite3
 from datetime import datetime
 
 from clinica.compartilhado.erros import ConflitoDePersistenciaError
-from clinica.infraestrutura.persistencia.conversao import de_texto, para_texto
+from clinica.infraestrutura.persistencia.conversao import para_texto
 from clinica.modulos.agenda.dominio.slot import Slot
 from clinica.modulos.consultas.dominio.consulta import Consulta, StatusConsulta
 
@@ -15,17 +15,13 @@ def _para_consulta(linha: sqlite3.Row) -> Consulta:
         paciente_id=linha["paciente_id"],
         profissional_id=linha["profissional_id"],
         especialidade_id=linha["especialidade_id"],
-        slot=Slot(de_texto(linha["inicio"]), de_texto(linha["fim"])),
+        slot=Slot(datetime.fromisoformat(linha["inicio"]), datetime.fromisoformat(linha["fim"])),
         status=StatusConsulta(linha["status"]),
     )
 
 
 def _traduzir(erro: sqlite3.IntegrityError) -> Exception:
-    """Converte a violação de um índice único de reserva em ``ConflitoDePersistenciaError``.
-
-    Qualquer outra violação de integridade (chave estrangeira, CHECK) é um erro
-    de programação e continua como está.
-    """
+    """Converte a violação de um índice único de reserva em ``ConflitoDePersistenciaError``"""
     mensagem = str(erro)
     if "UNIQUE" in mensagem and "consulta.profissional_id" in mensagem:
         return ConflitoDePersistenciaError("profissional")
@@ -78,7 +74,7 @@ class SQLiteConsultaRepositorio:
         linha = self._con.execute("SELECT * FROM consulta WHERE id = ?", (consulta_id,)).fetchone()
         return _para_consulta(linha) if linha else None
 
-    def listar_ativas_do_profissional(
+    def listar_consultas_ativas_profissional(
         self, profissional_id: int, inicio: datetime, fim: datetime
     ) -> list[Consulta]:
         linhas = self._con.execute(
@@ -88,20 +84,20 @@ class SQLiteConsultaRepositorio:
         )
         return [_para_consulta(linha) for linha in linhas]
 
-    def listar_ativas_do_paciente(self, paciente_id: int) -> list[Consulta]:
+    def listar_consultas_ativas_paciente(self, paciente_id: int) -> list[Consulta]:
         linhas = self._con.execute(
             f"SELECT * FROM consulta WHERE {_ATIVAS} AND paciente_id = ? ORDER BY inicio",
             (paciente_id,),
         )
         return [_para_consulta(linha) for linha in linhas]
 
-    def listar_por_paciente(self, paciente_id: int) -> list[Consulta]:
+    def listar_consultas_paciente(self, paciente_id: int) -> list[Consulta]:
         linhas = self._con.execute(
             "SELECT * FROM consulta WHERE paciente_id = ? ORDER BY inicio", (paciente_id,)
         )
         return [_para_consulta(linha) for linha in linhas]
 
-    def listar_por_profissional(
+    def listar_consultas_profissional(
         self, profissional_id: int, inicio: datetime, fim: datetime
     ) -> list[Consulta]:
         linhas = self._con.execute(

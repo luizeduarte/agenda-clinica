@@ -1,7 +1,4 @@
 """``AgendaPaciente``: conflitos e limites do paciente (RN03, RN08).
-
-Avalia tudo em memória a partir das consultas recebidas. O relógio entra como
-parâmetro (``agora``) para que a regra seja determinística nos testes.
 """
 from collections.abc import Iterable
 from datetime import datetime
@@ -17,17 +14,10 @@ MAX_ATIVAS_FUTURAS_POR_ESPECIALIDADE = 1
 class AgendaPaciente:
     def __init__(self, paciente_id: int, consultas: Iterable[Consulta]) -> None:
         self.paciente_id = paciente_id
-        # Só as ativas importam: CANCELADA libera o horário (RN03).
         self.consultas_ativas = [c for c in consultas if c.esta_ativa]
 
     def verificar_pode_agendar(self, slot: Slot, especialidade_id: int, agora: datetime) -> None:
-        """Levanta erro se o paciente não puder reservar ``slot`` com a especialidade dada.
-
-        Raises:
-            ConflitoDoPacienteError: já há consulta ativa sobreposta (RN03).
-            LimiteDoPacienteExcedidoError: passa de 2 ativas no dia ou de 1 ativa
-                futura na especialidade (RN08).
-        """
+        """Levanta erro se o paciente não puder reservar ``slot`` com a especialidade dada."""
         if any(c.slot.sobrepoe(slot) for c in self.consultas_ativas):
             raise ConflitoDoPacienteError("O paciente já tem uma consulta ativa nesse horário.")
 

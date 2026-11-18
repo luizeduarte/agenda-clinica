@@ -1,4 +1,4 @@
-"""Conceitos de cadastro. Apenas dados mínimos (LGPD).
+"""Conceitos de cadastro. Apenas dados mínimos.
 
 Ver ``docs/responsabilidades.md`` seção 2.1.
 """

@@ -60,20 +60,20 @@ class ConsultaRepositorioEmMemoria:
     def obter_por_id(self, consulta_id: int) -> Consulta | None:
         return next((c for c in self._b.consultas if c.id == consulta_id), None)
 
-    def listar_ativas_do_profissional(self, profissional_id, inicio: datetime, fim: datetime):
+    def listar_consultas_ativas_profissional(self, profissional_id, inicio: datetime, fim: datetime):
         return [
             c for c in self._b.consultas
             if c.esta_ativa and c.profissional_id == profissional_id
             and c.slot.inicio < fim and inicio < c.slot.fim
         ]
 
-    def listar_ativas_do_paciente(self, paciente_id):
+    def listar_consultas_ativas_paciente(self, paciente_id):
         return [c for c in self._b.consultas if c.esta_ativa and c.paciente_id == paciente_id]
 
-    def listar_por_paciente(self, paciente_id):
+    def listar_consultas_paciente(self, paciente_id):
         return [c for c in self._b.consultas if c.paciente_id == paciente_id]
 
-    def listar_por_profissional(self, profissional_id, inicio, fim):
+    def listar_consultas_profissional(self, profissional_id, inicio, fim):
         return [
             c for c in self._b.consultas
             if c.profissional_id == profissional_id and c.slot.inicio < fim and inicio < c.slot.fim
