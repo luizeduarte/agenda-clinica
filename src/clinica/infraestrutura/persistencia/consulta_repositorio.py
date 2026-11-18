@@ -56,24 +56,6 @@ class SQLiteConsultaRepositorio:
         consulta.id = cursor.lastrowid
         return consulta
 
-    def atualizar(self, consulta: Consulta) -> None:
-        try:
-            self._con.execute(
-                "UPDATE consulta SET inicio = ?, fim = ?, status = ? WHERE id = ?",
-                (
-                    para_texto(consulta.slot.inicio),
-                    para_texto(consulta.slot.fim),
-                    consulta.status.value,
-                    consulta.id,
-                ),
-            )
-        except sqlite3.IntegrityError as erro:
-            raise _traduzir(erro) from erro
-
-    def obter_por_id(self, consulta_id: int) -> Consulta | None:
-        linha = self._con.execute("SELECT * FROM consulta WHERE id = ?", (consulta_id,)).fetchone()
-        return _para_consulta(linha) if linha else None
-
     def listar_consultas_ativas_profissional(
         self, profissional_id: int, inicio: datetime, fim: datetime
     ) -> list[Consulta]:
@@ -88,21 +70,5 @@ class SQLiteConsultaRepositorio:
         linhas = self._con.execute(
             f"SELECT * FROM consulta WHERE {_ATIVAS} AND paciente_id = ? ORDER BY inicio",
             (paciente_id,),
-        )
-        return [_para_consulta(linha) for linha in linhas]
-
-    def listar_consultas_paciente(self, paciente_id: int) -> list[Consulta]:
-        linhas = self._con.execute(
-            "SELECT * FROM consulta WHERE paciente_id = ? ORDER BY inicio", (paciente_id,)
-        )
-        return [_para_consulta(linha) for linha in linhas]
-
-    def listar_consultas_profissional(
-        self, profissional_id: int, inicio: datetime, fim: datetime
-    ) -> list[Consulta]:
-        linhas = self._con.execute(
-            "SELECT * FROM consulta WHERE profissional_id = ? AND inicio < ? AND fim > ?"
-            " ORDER BY inicio",
-            (profissional_id, para_texto(fim), para_texto(inicio)),
         )
         return [_para_consulta(linha) for linha in linhas]

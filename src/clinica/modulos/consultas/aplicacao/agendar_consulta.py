@@ -8,7 +8,9 @@ from clinica.compartilhado.erros import (
     ConflitoDoPacienteError,
     EntidadeNaoEncontradaError,
     HorarioIndisponivelError,
+    NaoAutorizadoError,
 )
+from clinica.modulos.autenticacao.portas.servico_autenticacao import Papel, Usuario
 from clinica.modulos.agenda.dominio.slot import Slot
 from clinica.modulos.consultas.aplicacao.agenda_do_profissional import (
     carregar_agenda_do_profissional,
@@ -22,7 +24,7 @@ from clinica.modulos.notificacoes.dominio.notificacao import NotificacaoPendente
 
 @dataclass(frozen=True)
 class AgendarConsultaComando:
-    paciente_id: int
+    usuario: Usuario  # quem pede; o paciente da consulta é o próprio usuário
     profissional_id: int
     inicio: datetime
 
@@ -40,12 +42,16 @@ class AgendarConsulta:
 
     def executar(self, comando: AgendarConsultaComando) -> Consulta:
         """Registra a consulta como ``AGENDADA`` e a notificação pendente, atomicamente."""
+        # Só o paciente agenda (RF03, RNF03).
+        if comando.usuario.papel != Papel.PACIENTE:
+            raise NaoAutorizadoError("Apenas pacientes podem agendar consultas.")
+
         slot = Slot.a_partir_de(comando.inicio)
 
         # Consulta e notificação pendente só valem juntas, no commit (ver
         # UnidadeDeTrabalho). Qualquer erro antes dele desfaz as duas.
         with self._uow as uow:
-            paciente = uow.pacientes.obter_por_id(comando.paciente_id)
+            paciente = uow.pacientes.obter_por_id(comando.usuario.id)
             if paciente is None:
                 raise EntidadeNaoEncontradaError("Paciente não encontrado.")
             profissional = uow.profissionais.obter_por_id(comando.profissional_id)

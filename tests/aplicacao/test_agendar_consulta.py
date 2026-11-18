@@ -1,13 +1,14 @@
 import pytest
 
 from clinica.compartilhado.erros import (
-    ConflitoDePersistenciaError,
     ConflitoDoPacienteError,
     EntidadeNaoEncontradaError,
     HorarioIndisponivelError,
     LimiteDoPacienteExcedidoError,
+    NaoAutorizadoError,
     SlotInvalidoError,
 )
+from clinica.modulos.autenticacao.portas.servico_autenticacao import Papel, Usuario
 from clinica.modulos.agenda.dominio.horarios import Bloqueio
 from clinica.modulos.cadastros.dominio.cadastros import Especialidade, Profissional
 from clinica.modulos.consultas.aplicacao.agendar_consulta import (
@@ -26,7 +27,7 @@ def agendar(uow):
 
 
 def comando(paciente=7, profissional=10, hora=10, minuto=0):
-    return AgendarConsultaComando(paciente, profissional, dt(hora, minuto))
+    return AgendarConsultaComando(Usuario(paciente, Papel.PACIENTE), profissional, dt(hora, minuto))
 
 
 class TestFluxoPrincipal:
@@ -49,7 +50,7 @@ class TestFluxoPrincipal:
 
     def test_horario_cancelado_pode_ser_reagendado_por_outro_paciente(self, agendar, banco):
         primeira = agendar.executar(comando(paciente=7))
-        primeira.cancelar()
+        primeira.status = StatusConsulta.CANCELADA  # o cancelamento em si está fora do recorte
 
         segunda = agendar.executar(comando(paciente=8))
 
@@ -164,3 +165,31 @@ class TestConsistencia:
 
         assert banco.consultas == []
         assert banco.pendentes == []
+
+
+class TestAutorizacao:
+    """RNF03: só o paciente agenda; a recusa não altera nenhum dado."""
+
+    PROFISSIONAL = Usuario(10, Papel.PROFISSIONAL)
+
+    def test_profissional_nao_agenda(self, agendar, banco):
+        with pytest.raises(NaoAutorizadoError, match="pacientes"):
+            agendar.executar(AgendarConsultaComando(self.PROFISSIONAL, 10, dt(10)))
+
+        assert banco.consultas == []
+        assert banco.pendentes == []
+
+    def test_o_mesmo_pedido_feito_por_um_paciente_e_aceito(self, agendar, banco):
+        agendar.executar(comando(paciente=7))
+
+        assert len(banco.consultas) == 1
+
+    def test_a_recusa_vem_antes_das_outras_validacoes(self, agendar):
+        # horário fora da grade e profissional inexistente: o usuário já é recusado antes
+        with pytest.raises(NaoAutorizadoError):
+            agendar.executar(AgendarConsultaComando(self.PROFISSIONAL, 999, dt(10, 15)))
+
+    def test_o_paciente_da_consulta_e_o_proprio_usuario(self, agendar):
+        consulta = agendar.executar(comando(paciente=8))
+
+        assert consulta.paciente_id == 8

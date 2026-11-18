@@ -2,7 +2,6 @@
 from dataclasses import dataclass
 from enum import Enum
 
-from clinica.compartilhado.erros import TransicaoInvalidaError
 from clinica.modulos.agenda.dominio.slot import Slot
 
 
@@ -37,27 +36,3 @@ class Consulta:
     @property
     def esta_ativa(self) -> bool:
         return self.status in STATUS_ATIVOS
-
-    def confirmar(self) -> None:
-        """O paciente confirma (RF07). Só vale para consulta ``AGENDADA``."""
-        self._exigir(self.status == StatusConsulta.AGENDADA, "confirmar")
-        self.status = StatusConsulta.CONFIRMADA
-
-    def cancelar(self) -> None:
-        """Libera o slot (RN03). Só vale para consulta ativa."""
-        self._exigir(self.esta_ativa, "cancelar")
-        self.status = StatusConsulta.CANCELADA
-
-    def registrar_realizada(self) -> None:
-        self._exigir(self.esta_ativa, "registrar como realizada")
-        self.status = StatusConsulta.REALIZADA
-
-    def registrar_falta(self) -> None:
-        self._exigir(self.esta_ativa, "registrar falta")
-        self.status = StatusConsulta.FALTOU
-
-    def _exigir(self, condicao: bool, acao: str) -> None:
-        if not condicao:
-            raise TransicaoInvalidaError(
-                f"Não é possível {acao} uma consulta {self.status.value}."
-            )

@@ -4,7 +4,6 @@ Imitam o comportamento relevante do banco: o índice único parcial por
 ``(participante, inicio)`` das consultas ativas e o rollback ao sair sem commit.
 """
 import copy
-import dataclasses
 from datetime import datetime
 
 from clinica.compartilhado.erros import ConflitoDePersistenciaError
@@ -54,12 +53,6 @@ class ConsultaRepositorioEmMemoria:
         self._b.consultas.append(consulta)
         return consulta
 
-    def atualizar(self, consulta: Consulta) -> None:
-        pass  # os objetos já são compartilhados
-
-    def obter_por_id(self, consulta_id: int) -> Consulta | None:
-        return next((c for c in self._b.consultas if c.id == consulta_id), None)
-
     def listar_consultas_ativas_profissional(self, profissional_id, inicio: datetime, fim: datetime):
         return [
             c for c in self._b.consultas
@@ -70,15 +63,6 @@ class ConsultaRepositorioEmMemoria:
     def listar_consultas_ativas_paciente(self, paciente_id):
         return [c for c in self._b.consultas if c.esta_ativa and c.paciente_id == paciente_id]
 
-    def listar_consultas_paciente(self, paciente_id):
-        return [c for c in self._b.consultas if c.paciente_id == paciente_id]
-
-    def listar_consultas_profissional(self, profissional_id, inicio, fim):
-        return [
-            c for c in self._b.consultas
-            if c.profissional_id == profissional_id and c.slot.inicio < fim and inicio < c.slot.fim
-        ]
-
 
 class AgendaRepositorioEmMemoria:
     def __init__(self, banco: BancoEmMemoria) -> None:
@@ -87,19 +71,11 @@ class AgendaRepositorioEmMemoria:
     def obter_horarios_atendimento(self, profissional_id):
         return list(self._b.horarios.get(profissional_id, []))
 
-    def salvar_horarios_atendimento(self, profissional_id, horarios):
-        self._b.horarios[profissional_id] = list(horarios)
-
     def listar_bloqueios(self, profissional_id, inicio, fim):
         return [
             b for dono, b in self._b.bloqueios
             if dono in (profissional_id, None) and b.inicio < fim and inicio < b.fim
         ]
-
-    def adicionar_bloqueio(self, profissional_id, bloqueio):
-        bloqueio = dataclasses.replace(bloqueio, id=self._b.novo_id())
-        self._b.bloqueios.append((profissional_id, bloqueio))
-        return bloqueio
 
 
 class PacienteRepositorioEmMemoria:

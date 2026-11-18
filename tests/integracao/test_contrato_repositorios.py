@@ -8,6 +8,8 @@ import pytest
 
 from clinica.compartilhado.erros import ConflitoDePersistenciaError
 from clinica.infraestrutura.persistencia import SQLiteUnidadeDeTrabalho, inicializar_banco
+from clinica.infraestrutura.persistencia.conexao import abrir_conexao
+from clinica.infraestrutura.persistencia.conversao import para_texto
 from clinica.infraestrutura.persistencia.dados_exemplo import popular_dados_de_exemplo
 from clinica.modulos.agenda.dominio.horarios import Bloqueio, HorarioAtendimento
 from clinica.modulos.agenda.dominio.slot import Slot
@@ -26,20 +28,67 @@ def dt(hora, minuto=0, dia=1):
     return datetime(2026, 12, dia, hora, minuto)
 
 
+class Ambiente:
+    """Unidade de trabalho de um dos bancos, mais a preparação de dados para a leitura.
+
+    O recorte do protótipo não tem operações para gravar horários e bloqueios, então
+    os testes os criam direto no banco de cada implementação.
+    """
+
+    def __init__(self, uow, semear_horarios, semear_bloqueio):
+        self.uow = uow
+        self.semear_horarios = semear_horarios
+        self.semear_bloqueio = semear_bloqueio
+
+
 @pytest.fixture(params=["memoria", "sqlite"])
-def uow(request, tmp_path):
+def ambiente(request, tmp_path):
     """Mesmos cadastros nos dois: pacientes 7 e 8; profissionais 10 (Clínica Geral) e 11 (Odontologia)."""
     if request.param == "sqlite":
         caminho = tmp_path / "contrato.db"
         inicializar_banco(caminho)
         popular_dados_de_exemplo(caminho)
-        return SQLiteUnidadeDeTrabalho(caminho)
+
+        def semear_horarios(profissional_id, horarios):
+            con = abrir_conexao(caminho)
+            con.execute("DELETE FROM horario_atendimento WHERE profissional_id = ?", (profissional_id,))
+            con.executemany(
+                "INSERT INTO horario_atendimento (profissional_id, dia_semana, hora_inicio, hora_fim)"
+                " VALUES (?, ?, ?, ?)",
+                [
+                    (profissional_id, h.dia_semana, h.hora_inicio.strftime("%H:%M"), h.hora_fim.strftime("%H:%M"))
+                    for h in horarios
+                ],
+            )
+            con.close()
+
+        def semear_bloqueio(profissional_id, bloqueio):
+            con = abrir_conexao(caminho)
+            con.execute(
+                "INSERT INTO bloqueio (profissional_id, inicio, fim, motivo) VALUES (?, ?, ?, ?)",
+                (profissional_id, para_texto(bloqueio.inicio), para_texto(bloqueio.fim), bloqueio.motivo),
+            )
+            con.close()
+
+        return Ambiente(SQLiteUnidadeDeTrabalho(caminho), semear_horarios, semear_bloqueio)
 
     banco = BancoEmMemoria()
     clinica, odonto = Especialidade(1, "Clínica Geral"), Especialidade(2, "Odontologia")
     banco.pacientes = {7: Paciente(7, "Ana", "ana@exemplo.com"), 8: Paciente(8, "Bia", "bia@exemplo.com")}
     banco.profissionais = {10: Profissional(10, "Dr. João", clinica), 11: Profissional(11, "Dra. Marta", odonto)}
-    return UnidadeDeTrabalhoEmMemoria(banco)
+
+    def semear_horarios(profissional_id, horarios):
+        banco.horarios[profissional_id] = list(horarios)
+
+    def semear_bloqueio(profissional_id, bloqueio):
+        banco.bloqueios.append((profissional_id, bloqueio))
+
+    return Ambiente(UnidadeDeTrabalhoEmMemoria(banco), semear_horarios, semear_bloqueio)
+
+
+@pytest.fixture
+def uow(ambiente):
+    return ambiente.uow
 
 
 def nova_consulta(paciente=7, profissional=10, hora=10, status=StatusConsulta.AGENDADA):
@@ -78,18 +127,13 @@ class TestCadastros:
 
 
 class TestConsultas:
-    def test_adicionar_atribui_id_e_permite_obter(self, uow):
+    def test_adicionar_atribui_id_e_a_consulta_e_lida_de_volta(self, uow):
         with uow:
             consulta = uow.consultas.adicionar(nova_consulta())
             uow.commit()
         assert consulta.id is not None
         with uow:
-            lida = uow.consultas.obter_por_id(consulta.id)
-        assert lida == consulta
-
-    def test_obter_inexistente(self, uow):
-        with uow:
-            assert uow.consultas.obter_por_id(999) is None
+            assert uow.consultas.listar_consultas_ativas_paciente(7) == [consulta]
 
     def test_conflito_do_profissional(self, uow):
         gravar(uow, nova_consulta(paciente=7))
@@ -109,17 +153,6 @@ class TestConsultas:
         gravar(uow, nova_consulta(status=StatusConsulta.CANCELADA))
         gravar(uow, nova_consulta(paciente=8))  # não levanta
 
-    def test_atualizar_persiste_o_estado(self, uow):
-        gravar(uow, nova_consulta())
-        with uow:
-            (consulta,) = uow.consultas.listar_consultas_paciente(7)
-            consulta.cancelar()
-            uow.consultas.atualizar(consulta)
-            uow.commit()
-        with uow:
-            assert uow.consultas.obter_por_id(consulta.id).status == StatusConsulta.CANCELADA
-            assert uow.consultas.listar_consultas_ativas_paciente(7) == []
-
     def test_ativas_do_profissional_usa_intervalo_semiaberto(self, uow):
         gravar(uow, nova_consulta(hora=10))  # 10:00–10:30
         with uow:
@@ -130,64 +163,51 @@ class TestConsultas:
         assert encostado == []
         assert outro == []
 
-    def test_ativas_do_profissional_ignora_canceladas(self, uow):
+    def test_ativas_do_profissional_ignoram_canceladas(self, uow):
         gravar(uow, nova_consulta(status=StatusConsulta.CANCELADA))
         with uow:
             assert uow.consultas.listar_consultas_ativas_profissional(10, dt(0), dt(23)) == []
 
-    def test_listagens_do_paciente(self, uow):
+    def test_ativas_do_paciente_ignoram_canceladas(self, uow):
         gravar(
             uow,
             nova_consulta(hora=9),
             nova_consulta(hora=10, status=StatusConsulta.CANCELADA),
         )
         with uow:
-            assert len(uow.consultas.listar_consultas_ativas_paciente(7)) == 1
-            assert len(uow.consultas.listar_consultas_paciente(7)) == 2
-
-    def test_listar_consultas_profissional_traz_todos_os_estados(self, uow):
-        gravar(
-            uow,
-            nova_consulta(hora=9),
-            nova_consulta(paciente=8, hora=10, status=StatusConsulta.CANCELADA),
-        )
-        with uow:
-            assert len(uow.consultas.listar_consultas_profissional(10, dt(0), dt(23))) == 2
+            (ativa,) = uow.consultas.listar_consultas_ativas_paciente(7)
+        assert ativa.slot.inicio == dt(9)
 
 
 class TestAgendas:
-    def test_salva_e_le_horarios_substituindo_os_anteriores(self, uow):
-        with uow:
-            uow.agendas.salvar_horarios_atendimento(
-                10, [HorarioAtendimento(1, time(8, 0), time(12, 0))]
-            )
-            uow.agendas.salvar_horarios_atendimento(
-                10, [HorarioAtendimento(2, time(14, 0), time(18, 30))]
-            )
-            uow.commit()
-        with uow:
-            assert uow.agendas.obter_horarios_atendimento(10) == [
-                HorarioAtendimento(2, time(14, 0), time(18, 30))
-            ]
+    def test_le_os_horarios_de_atendimento_do_profissional(self, ambiente):
+        horarios = [
+            HorarioAtendimento(1, time(8, 0), time(12, 0)),
+            HorarioAtendimento(1, time(14, 0), time(18, 30)),
+        ]
+        ambiente.semear_horarios(10, horarios)
+        with ambiente.uow:
+            assert ambiente.uow.agendas.obter_horarios_atendimento(10) == horarios
+            assert ambiente.uow.agendas.obter_horarios_atendimento(11) != horarios
 
-    def test_bloqueios_individual_e_coletivo(self, uow):
-        with uow:
-            individual = uow.agendas.adicionar_bloqueio(10, Bloqueio(dt(9), dt(10), "reunião"))
-            coletivo = uow.agendas.adicionar_bloqueio(None, Bloqueio(dt(9), dt(10), "feriado"))
-            uow.agendas.adicionar_bloqueio(11, Bloqueio(dt(9), dt(10), "de outra pessoa"))
-            uow.commit()
-        assert individual.id is not None and coletivo.id is not None
-        with uow:
-            motivos = {b.motivo for b in uow.agendas.listar_bloqueios(10, dt(0), dt(23))}
-        assert motivos == {"reunião", "feriado"}
+    def test_profissional_sem_horarios(self, ambiente):
+        ambiente.semear_horarios(10, [])
+        with ambiente.uow:
+            assert ambiente.uow.agendas.obter_horarios_atendimento(10) == []
 
-    def test_bloqueios_respeitam_o_intervalo(self, uow):
-        with uow:
-            uow.agendas.adicionar_bloqueio(10, Bloqueio(dt(9), dt(10), "reunião"))
-            uow.commit()
-        with uow:
-            assert uow.agendas.listar_bloqueios(10, dt(10), dt(11)) == []
-            assert len(uow.agendas.listar_bloqueios(10, dt(9, 30), dt(11))) == 1
+    def test_bloqueios_individual_e_coletivo(self, ambiente):
+        ambiente.semear_bloqueio(10, Bloqueio(dt(9), dt(10), "reunião"))
+        ambiente.semear_bloqueio(None, Bloqueio(dt(9), dt(10), "feriado"))
+        ambiente.semear_bloqueio(11, Bloqueio(dt(9), dt(10), "de outra pessoa"))
+        with ambiente.uow:
+            bloqueios = ambiente.uow.agendas.listar_bloqueios(10, dt(0), dt(23))
+        assert {b.motivo for b in bloqueios} == {"reunião", "feriado"}
+
+    def test_bloqueios_respeitam_o_intervalo(self, ambiente):
+        ambiente.semear_bloqueio(10, Bloqueio(dt(9), dt(10), "reunião"))
+        with ambiente.uow:
+            assert ambiente.uow.agendas.listar_bloqueios(10, dt(10), dt(11)) == []
+            assert len(ambiente.uow.agendas.listar_bloqueios(10, dt(9, 30), dt(11))) == 1
 
 
 class TestNotificacoesPendentes:

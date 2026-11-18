@@ -1,8 +1,7 @@
 import sqlite3
-from dataclasses import replace
 from datetime import datetime, time
 
-from clinica.infraestrutura.persistencia.conversao import hora_para_texto, para_texto
+from clinica.infraestrutura.persistencia.conversao import para_texto
 from clinica.modulos.agenda.dominio.horarios import Bloqueio, HorarioAtendimento
 
 
@@ -25,21 +24,6 @@ class SQLiteAgendaRepositorio:
             for l in linhas
         ]
 
-    def salvar_horarios_atendimento(
-        self, profissional_id: int, horarios: list[HorarioAtendimento]
-    ) -> None:
-        self._con.execute(
-            "DELETE FROM horario_atendimento WHERE profissional_id = ?", (profissional_id,)
-        )
-        self._con.executemany(
-            "INSERT INTO horario_atendimento (profissional_id, dia_semana, hora_inicio, hora_fim)"
-            " VALUES (?, ?, ?, ?)",
-            [
-                (profissional_id, h.dia_semana, hora_para_texto(h.hora_inicio), hora_para_texto(h.hora_fim))
-                for h in horarios
-            ],
-        )
-
     def listar_bloqueios(
         self, profissional_id: int, inicio: datetime, fim: datetime
     ) -> list[Bloqueio]:
@@ -53,10 +37,3 @@ class SQLiteAgendaRepositorio:
             Bloqueio(datetime.fromisoformat(l["inicio"]), datetime.fromisoformat(l["fim"]), l["motivo"], l["id"])
             for l in linhas
         ]
-
-    def adicionar_bloqueio(self, profissional_id: int | None, bloqueio: Bloqueio) -> Bloqueio:
-        cursor = self._con.execute(
-            "INSERT INTO bloqueio (profissional_id, inicio, fim, motivo) VALUES (?, ?, ?, ?)",
-            (profissional_id, para_texto(bloqueio.inicio), para_texto(bloqueio.fim), bloqueio.motivo),
-        )
-        return replace(bloqueio, id=cursor.lastrowid)

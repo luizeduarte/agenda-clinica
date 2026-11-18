@@ -1,12 +1,14 @@
 import pytest
 
 from clinica.compartilhado.erros import EntidadeNaoEncontradaError
+from clinica.modulos.autenticacao.portas.servico_autenticacao import Papel, Usuario
 from clinica.modulos.agenda.dominio.horarios import Bloqueio
 from clinica.modulos.consultas.aplicacao.agendar_consulta import (
     AgendarConsulta,
     AgendarConsultaComando,
 )
 from clinica.modulos.consultas.aplicacao.consultar_disponibilidade import ConsultarDisponibilidade
+from clinica.modulos.consultas.dominio.consulta import StatusConsulta
 from tests.aplicacao.conftest import AGORA, TERCA, dt
 
 
@@ -30,7 +32,7 @@ def test_por_profissional_lista_todos_os_slots_do_dia(consultar):
 
 def test_desconta_consultas_ativas_e_bloqueios(consultar, uow, banco):
     AgendarConsulta(uow, relogio=lambda: AGORA).executar(
-        AgendarConsultaComando(7, 10, dt(8, 30))
+        AgendarConsultaComando(Usuario(7, Papel.PACIENTE), 10, dt(8, 30))
     )
     banco.bloqueios.append((10, Bloqueio(dt(9, 0), dt(10, 0), "reunião")))
 
@@ -41,9 +43,9 @@ def test_desconta_consultas_ativas_e_bloqueios(consultar, uow, banco):
 
 def test_consulta_cancelada_libera_o_slot(consultar, uow):
     consulta = AgendarConsulta(uow, relogio=lambda: AGORA).executar(
-        AgendarConsultaComando(7, 10, dt(8, 30))
+        AgendarConsultaComando(Usuario(7, Papel.PACIENTE), 10, dt(8, 30))
     )
-    consulta.cancelar()
+    consulta.status = StatusConsulta.CANCELADA  # o cancelamento em si está fora do recorte
 
     (resultado,) = consultar.executar(TERCA, profissional_id=10)
 
@@ -59,7 +61,7 @@ def test_por_especialidade_traz_so_os_profissionais_dela(consultar):
 
 def test_ocupacao_de_um_profissional_nao_afeta_o_outro(consultar, uow):
     AgendarConsulta(uow, relogio=lambda: AGORA).executar(
-        AgendarConsultaComando(7, 10, dt(8, 0))
+        AgendarConsultaComando(Usuario(7, Papel.PACIENTE), 10, dt(8, 0))
     )
 
     (outro,) = consultar.executar(TERCA, profissional_id=11)
