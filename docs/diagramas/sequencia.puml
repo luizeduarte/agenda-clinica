@@ -1,0 +1,123 @@
+@startuml sequencia
+
+autonumber
+hide footbox
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 85
+
+actor "Paciente" as P
+boundary "AgendamentoController" as C
+control "AgendarConsulta" as UC
+participant "ServicoAutenticacao" as AUTH
+participant "UnidadeDeTrabalho" as UOW
+participant "Slot" as SLOT
+participant "PacienteRepositorio /\nProfissionalRepositorio" as CAD
+participant "AgendaRepositorio" as AGREP
+participant "ConsultaRepositorio" as CREP
+participant "AgendaProfissional" as AP
+participant "AgendaPaciente" as APA
+participant "NotificacaoPendenteRepositorio" as NREP
+database "SQLite" as DB
+
+P -> C : POST /consultas (profissional, inicio)
+opt Porta aplicável à identificação
+  C -> AUTH : identificarUsuario()
+  AUTH --> C : contexto de identidade
+end
+note over C
+  A identificação do paciente está a definir.
+  Agendar requer autorização pelo papel (RNF03).
+end note
+alt Papel sem permissão
+  C --> P : 403 Forbidden
+else Paciente identificado e autorizado
+  C -> UC : executar(dados)
+
+  UC -> UOW : iniciar()
+  UOW -> DB : BEGIN IMMEDIATE
+  UC -> CAD : obterPacienteEProfissional()
+  CAD --> UC : paciente, profissional, especialidade
+  UC -> AGREP : buscarHorariosEBloqueios(profissional)
+  AGREP --> UC : horarios e bloqueios
+  UC -> CREP : listarAtivas(profissional, paciente)
+  CREP --> UC : consultas ativas
+
+  UC -> SLOT : validarGrade()
+
+  alt Dados ou slot invalidos
+    SLOT --> UC : invalido
+    UC -> UOW : rollback()
+    UOW -> DB : ROLLBACK
+    UC --> C : erro de validacao
+    C --> P : 400 Bad Request
+  else Slot valido
+    SLOT --> UC : válido
+    note over AP, APA : Agendas montadas com os dados carregados.
+    UC -> AP : estaDisponivel(slot)
+    AP --> UC : disponivel / indisponivel
+    UC -> APA : podeAgendar(slot, especialidade_id)
+    APA --> UC : permitido / impedido
+
+    alt Conflito, bloqueio ou limite excedido
+      UC -> UOW : rollback()
+      UOW -> DB : ROLLBACK
+      UC --> C : conflito de agendamento
+      C --> P : 409 Conflict
+    else Horario disponivel
+      create participant "consulta: Consulta" as CONS
+      UC -> CONS : «create» AGENDADA
+      alt Duas gravações e commit bem-sucedidos
+        UC -> CREP : salvar(consulta)
+        CREP -> DB : INSERT consulta
+        UC -> NREP : registrar(PENDENTE)
+        NREP -> DB : INSERT notificacao_pendente
+        UC -> UOW : commit()
+        UOW -> DB : COMMIT
+        UC --> C : consulta registrada
+        C --> P : 201 Created
+      else Falha na gravação ou no commit
+        note over UC, DB : A primeira falha interrompe as operações restantes.
+        opt Transação ainda aberta
+          UC -> UOW : rollback()
+          UOW -> DB : ROLLBACK
+        end
+
+        alt Violação da restrição de unicidade da reserva
+          UC --> C : conflito de agendamento
+          C --> P : 409 Conflict
+        else Falha interna inesperada
+          UC --> C : erro interno
+          C --> P : 500 Internal Server Error
+        end
+      end
+    end
+  end
+end
+
+== Processamento posterior (fora da requisicao HTTP) ==
+participant "ProcessadorNotificacoes" as PROC
+participant "Notificador" as NOTIF
+PROC -> NREP : listarPendentes()
+NREP --> PROC : notificacoes pendentes
+loop Para cada pendencia
+  PROC -> NOTIF : enviar(mensagem)
+  alt Envio bem-sucedido
+    NOTIF --> PROC : sucesso
+    PROC -> NREP : marcarENVIADA()
+  else Falha no canal externo
+    NOTIF --> PROC : falha
+    PROC -> NREP : registrarFALHA() / permitir reenvio
+  end
+end
+
+note over UOW, DB
+  O caso de uso chama portas abstratas.
+  Os adaptadores SQLite concretos executam o SQL.
+  SQLiteUnidadeDeTrabalho gerencia a conexão e a transação
+  compartilhadas pelos repositórios.
+end note
+note right of NOTIF
+  No prototipo, NotificadorFake.
+end note
+@enduml

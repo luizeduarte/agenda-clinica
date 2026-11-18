@@ -1,0 +1,98 @@
+@startuml classes
+
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam defaultFontSize 14
+skinparam titleFontSize 18
+skinparam classBackgroundColor white
+skinparam classBorderColor black
+skinparam legendBackgroundColor white
+skinparam classAttributeIconSize 0
+skinparam nodesep 30
+hide empty members
+hide circle
+
+title Classes - Domínio do agendamento
+
+class Especialidade {
+  id: ID
+  nome: String
+}
+class Profissional {
+  id: ID
+  nome: String
+}
+class Paciente {
+  id: ID
+  nome: String
+  email: String
+}
+class AgendaProfissional {
+  +estaDisponivel(slot: Slot): Boolean
+}
+class HorarioAtendimento {
+  dia_semana: DiaSemana
+  hora_inicio: Hora
+  hora_fim: Hora
+}
+class Bloqueio {
+  id: ID
+  inicio: DateTime
+  fim: DateTime
+  motivo: String
+}
+class Consulta {
+  id: ID
+  especialidade_id: ID
+  status: StatusConsulta
+  +confirmar()
+  +cancelar()
+}
+class AgendaPaciente {
+  +podeAgendar(slot: Slot, especialidade_id: ID): Boolean
+}
+class Slot <<valor>> {
+  inicio: DateTime
+  fim: DateTime
+  +validarGrade(): Boolean
+  +sobrepoe(outro: Slot): Boolean
+}
+enum StatusConsulta <<enumeration>> {
+  AGENDADA
+  CONFIRMADA
+  CANCELADA
+  REALIZADA
+  FALTOU
+}
+interface PoliticaDeCancelamento <<interface>> {
+  +permiteCancelar(consulta: Consulta,\n  ator: Papel, instante: DateTime): Boolean
+}
+
+Profissional "0..*" -up- "1" Especialidade
+Consulta "0..*" -up- "1" Especialidade : referência de\nespecialidade_id
+Profissional "1" -right- "0..*" Consulta
+Consulta "0..*" -right- "1" Paciente : reserva de
+
+Profissional "1" -down- "1" AgendaProfissional
+AgendaPaciente "1" -up-> "1" Paciente
+AgendaPaciente "0..1" -up-> "0..*" Consulta : /consultas ativas
+
+Consulta "1" *-down- "1" Slot : período
+AgendaProfissional "0..*" -right-> "0..*" Slot : ocupados
+AgendaProfissional "1" -down- "0..*" HorarioAtendimento : horários
+AgendaProfissional "0..*" -down- "0..*" Bloqueio : bloqueios
+
+PoliticaDeCancelamento .down.> Consulta
+Consulta .up.> StatusConsulta
+
+legend bottom
+  Consulta e AgendaPaciente pertencem ao módulo Consultas.
+  Cada paciente tem uma agenda no modelo. /consultas ativas é
+  uma visão em memória construída a partir das consultas do paciente.
+  A consulta copia a especialidade do profissional ao agendar (RN08).
+  A política de cancelamento é usada por CancelarConsulta (RN05).
+  Slot: 30 min, início em :00 ou :30 (RN02).
+  AGENDADA e CONFIRMADA ocupam o slot (RN03).
+endlegend
+@enduml
