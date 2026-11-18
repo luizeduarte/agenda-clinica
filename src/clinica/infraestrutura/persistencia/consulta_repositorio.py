@@ -7,6 +7,10 @@ from clinica.modulos.agenda.dominio.slot import Slot
 from clinica.modulos.consultas.dominio.consulta import Consulta, StatusConsulta
 
 _ATIVAS = "status IN ('AGENDADA', 'CONFIRMADA')"
+_RESTRICOES_DE_RESERVA = {
+    "UNIQUE constraint failed: consulta.profissional_id, consulta.inicio": "profissional",
+    "UNIQUE constraint failed: consulta.paciente_id, consulta.inicio": "paciente",
+}
 
 
 def _para_consulta(linha: sqlite3.Row) -> Consulta:
@@ -18,16 +22,6 @@ def _para_consulta(linha: sqlite3.Row) -> Consulta:
         slot=Slot(datetime.fromisoformat(linha["inicio"]), datetime.fromisoformat(linha["fim"])),
         status=StatusConsulta(linha["status"]),
     )
-
-
-def _traduzir(erro: sqlite3.IntegrityError) -> Exception:
-    """Converte a violação de um índice único de reserva em ``ConflitoDePersistenciaError``"""
-    mensagem = str(erro)
-    if "UNIQUE" in mensagem and "consulta.profissional_id" in mensagem:
-        return ConflitoDePersistenciaError("profissional")
-    if "UNIQUE" in mensagem and "consulta.paciente_id" in mensagem:
-        return ConflitoDePersistenciaError("paciente")
-    return erro
 
 
 class SQLiteConsultaRepositorio:
@@ -52,7 +46,11 @@ class SQLiteConsultaRepositorio:
                 ),
             )
         except sqlite3.IntegrityError as erro:
-            raise _traduzir(erro) from erro
+            if erro.sqlite_errorcode == sqlite3.SQLITE_CONSTRAINT_UNIQUE:
+                participante = _RESTRICOES_DE_RESERVA.get(str(erro))
+                if participante is not None:
+                    raise ConflitoDePersistenciaError(participante) from erro
+            raise
         consulta.id = cursor.lastrowid
         return consulta
 

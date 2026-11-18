@@ -14,7 +14,7 @@ from tests.aplicacao.conftest import AGORA, TERCA, dt
 
 @pytest.fixture
 def consultar(uow):
-    return ConsultarDisponibilidade(uow)
+    return ConsultarDisponibilidade(uow, relogio=lambda: AGORA)
 
 
 def inicios(disponibilidade):
@@ -75,6 +75,13 @@ def test_dia_sem_atendimento_nao_tem_slots(consultar):
     (resultado,) = consultar.executar(date(2026, 12, 2), profissional_id=10)  # quarta
 
     assert resultado.slots == []
+
+
+def test_lista_apenas_horarios_com_inicio_futuro(uow):
+    consultar = ConsultarDisponibilidade(uow, relogio=lambda: dt(10))
+    (resultado,) = consultar.executar(TERCA, profissional_id=10)
+
+    assert inicios(resultado) == [dt(10, 30), dt(11), dt(11, 30)]
 
 
 def test_profissional_inexistente(consultar):

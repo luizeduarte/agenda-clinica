@@ -11,7 +11,11 @@ class NotificacaoPendenteRepositorio(Protocol):
         ...
 
     def listar_para_envio(self, limite: int = 50) -> list[NotificacaoPendente]:
-        """Pendências em estado ``PENDENTE`` ou ``FALHA`` (candidatas a reenvio)."""
+        """Pendências ``PENDENTE`` ou ``FALHA``, priorizando as menos tentadas."""
+        ...
+
+    def obter_por_id(self, pendente_id: int) -> NotificacaoPendente | None:
+        """Obtém o estado atual de uma pendência pelo identificador."""
         ...
 
     def atualizar(self, pendente: NotificacaoPendente) -> None:

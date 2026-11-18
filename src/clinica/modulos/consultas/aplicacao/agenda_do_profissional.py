@@ -13,7 +13,7 @@ def carregar_agenda_do_profissional(
     ``agenda`` não pode depender de ``consultas``.
     """
     inicio = datetime.combine(dia, time.min)
-    fim = inicio + timedelta(days=1)
+    fim = datetime.max if dia == date.max else inicio + timedelta(days=1)
     return AgendaProfissional(
         profissional_id=profissional_id,
         horarios_atendimento=uow.agendas.obter_horarios_atendimento(profissional_id),

@@ -1,14 +1,16 @@
 """A API de ponta a ponta: HTTP, casos de uso e SQLite de verdade.
 
 Os testes usam ``criar_aplicacao`` (a mesma composição do protótipo), com um banco
-temporário. As datas são calculadas a partir de hoje para não envelhecerem.
+temporário e relógio fixo.
 """
 import threading
+from contextlib import closing
 from datetime import date, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 
+from clinica.infraestrutura.persistencia.conexao import abrir_conexao
 from clinica.main import criar_aplicacao
 
 ANA = {"Authorization": "Bearer token-ana"}
@@ -16,15 +18,8 @@ BIA = {"Authorization": "Bearer token-bia"}
 DR_JOAO = {"Authorization": "Bearer token-dr-joao"}
 
 
-def proxima_segunda(minimo_de_dias: int = 7) -> date:
-    """Primeira segunda-feira a pelo menos ``minimo_de_dias`` de hoje (os profissionais atendem seg–sex)."""
-    dia = date.today() + timedelta(days=minimo_de_dias)
-    while dia.weekday() != 0:
-        dia += timedelta(days=1)
-    return dia
-
-
-SEGUNDA = proxima_segunda()
+AGORA = datetime(2026, 11, 20, 9)
+SEGUNDA = date(2026, 11, 23)
 
 
 def horario(hora: int, minuto: int = 0, dia: date = SEGUNDA) -> str:
@@ -32,8 +27,13 @@ def horario(hora: int, minuto: int = 0, dia: date = SEGUNDA) -> str:
 
 
 @pytest.fixture
-def app(tmp_path):
-    return criar_aplicacao(tmp_path / "api.db")
+def caminho(tmp_path):
+    return tmp_path / "api.db"
+
+
+@pytest.fixture
+def app(caminho):
+    return criar_aplicacao(caminho, relogio=lambda: AGORA)
 
 
 @pytest.fixture
@@ -79,6 +79,34 @@ class TestConsultarDisponibilidade:
         assert horario(10) not in inicios
         assert horario(9, 30) in inicios and horario(10, 30) in inicios
 
+    @pytest.mark.parametrize("dia", [AGORA.date() - timedelta(days=1), SEGUNDA + timedelta(days=5)])
+    def test_data_passada_ou_sem_atendimento_retorna_agenda_vazia(self, cliente, dia):
+        resposta = cliente.get("/disponibilidade", params={"dia": dia.isoformat(), "profissional_id": 10}, headers=ANA)
+        assert resposta.status_code == 200
+        assert resposta.json()[0]["slots"] == []
+
+    def test_distingue_especialidade_vazia_de_busca_sem_resultados(self, cliente, caminho):
+        with closing(abrir_conexao(caminho)) as con:
+            con.execute("INSERT INTO especialidade VALUES (3, 'Pediatria')")
+
+        for nome in ("Cardiologia", "Pediatria"):
+            resposta = cliente.get(
+                "/disponibilidade", params={"dia": SEGUNDA.isoformat(), "especialidade": nome}, headers=ANA
+            )
+            assert resposta.status_code == 200 and resposta.json() == []
+
+        resposta = cliente.get(
+            "/disponibilidade", params={"dia": SEGUNDA.isoformat(), "especialidade": " "}, headers=ANA
+        )
+        assert resposta.status_code == 400
+        assert resposta.json() == {"erro": "Informe o nome da especialidade."}
+
+    def test_aceita_ultima_data_do_calendario(self, cliente):
+        resposta = cliente.get(
+            "/disponibilidade", params={"dia": date.max.isoformat(), "profissional_id": 10}, headers=ANA
+        )
+        assert resposta.status_code == 200
+
     def test_profissional_tambem_consulta(self, cliente):
         resposta = cliente.get(
             "/disponibilidade", params={"dia": SEGUNDA.isoformat(), "profissional_id": 10}, headers=DR_JOAO
@@ -95,7 +123,7 @@ class TestConsultarDisponibilidade:
         )
 
         assert sem_filtro.status_code == 400 and dois.status_code == 400
-        assert "erro" in sem_filtro.json() or "detail" in sem_filtro.json()
+        assert set(sem_filtro.json()) == set(dois.json()) == {"erro"}
 
     def test_data_invalida(self, cliente):
         resposta = cliente.get("/disponibilidade", params={"dia": "ontem", "profissional_id": 10}, headers=ANA)
@@ -146,6 +174,12 @@ class TestAgendarConsulta:
 
         assert resposta.status_code == 400
         assert "30" in resposta.json()["erro"] or ":00" in resposta.json()["erro"]
+
+    def test_horario_ja_iniciado_devolve_400(self, cliente):
+        resposta = agendar(cliente, inicio=AGORA.isoformat())
+
+        assert resposta.status_code == 400
+        assert resposta.json() == {"erro": "O horário da consulta deve estar no futuro."}
 
     def test_paciente_com_dois_agendamentos_no_mesmo_horario_devolve_409(self, cliente):
         agendar(cliente, ANA, profissional_id=10, inicio=horario(10))
@@ -201,7 +235,8 @@ class TestAutenticacao:
         )
 
         assert resposta.status_code == 401
-        assert "erro" in resposta.json()
+        assert set(resposta.json()) == {"erro"}
+        assert resposta.headers["WWW-Authenticate"] == "Bearer"
 
     def test_a_credencial_invalida_nao_grava_nada(self, cliente):
         cliente.post(
@@ -218,8 +253,58 @@ class TestDocumentacao:
         caminhos = cliente.get("/openapi.json").json()["paths"]
 
         assert set(caminhos) == {"/disponibilidade", "/consultas"}
-        assert set(caminhos["/consultas"]["post"]["responses"]) == {"201", "400", "401", "403", "404", "409"}
+        assert set(caminhos["/consultas"]["post"]["responses"]) == {"201", "400", "401", "403", "404", "409", "500"}
         assert "422" not in caminhos["/disponibilidade"]["get"]["responses"]
+
+
+class TestErrosHTTP:
+    def test_rota_inexistente_e_metodo_invalido_usam_o_mesmo_formato(self, cliente):
+        inexistente = cliente.get("/ausente")
+        metodo_invalido = cliente.get("/consultas")
+
+        assert inexistente.status_code == 404
+        assert inexistente.json() == {"erro": "Recurso não encontrado."}
+        assert metodo_invalido.status_code == 405
+        assert metodo_invalido.json() == {"erro": "Método não permitido para este recurso."}
+        assert metodo_invalido.headers["Allow"] == "POST"
+
+    @pytest.mark.parametrize(
+        ("tabela", "acao", "detalhe"),
+        [
+            ("consulta", "ABORT", "UNIQUE constraint failed: consulta.profissional_id, consulta.inicio"),
+            ("notificacao_pendente", "ROLLBACK", "detalhe interno da persistência"),
+        ],
+    )
+    def test_falha_interna_reverte_o_agendamento_sem_vazar_detalhes(self, app, caminho, tabela, acao, detalhe):
+        with closing(abrir_conexao(caminho)) as con, TestClient(app, raise_server_exceptions=False) as cliente:
+            con.execute(
+                f"CREATE TRIGGER falha BEFORE INSERT ON {tabela}"
+                f" BEGIN SELECT RAISE({acao}, '{detalhe}'); END"
+            )
+
+            resposta = agendar(cliente)
+
+            assert resposta.status_code == 500
+            assert resposta.json() == {"erro": "Erro interno inesperado."}
+            assert con.execute("SELECT COUNT(*) FROM consulta").fetchone()[0] == 0
+            assert con.execute("SELECT COUNT(*) FROM notificacao_pendente").fetchone()[0] == 0
+            con.execute("DROP TRIGGER falha")
+            assert agendar(cliente).status_code == 201
+
+
+class TestInterface:
+    def test_pagina_estaticos_e_swagger_estao_disponiveis(self, cliente):
+        pagina = cliente.get("/")
+        estilo = cliente.get("/estaticos/agenda.css")
+        script = cliente.get("/estaticos/agenda.js")
+
+        assert pagina.status_code == estilo.status_code == script.status_code == 200
+        assert pagina.headers["content-type"].startswith("text/html")
+        assert estilo.headers["content-type"].startswith("text/css")
+        assert "javascript" in script.headers["content-type"]
+        assert 'lang="pt-BR"' in pagina.text
+        assert '/estaticos/agenda.css' in pagina.text and '/estaticos/agenda.js' in pagina.text
+        assert cliente.get("/docs").status_code == 200
 
 
 class TestConcorrenciaPelaApi:
@@ -229,7 +314,7 @@ class TestConcorrenciaPelaApi:
         # Um banco novo por rodada: quem ganha um horário não pode, pela RN08, ganhar
         # outro com a mesma especialidade, o que misturaria as rodadas.
         for rodada, hora in enumerate([8, 9, 10, 11, 14, 15, 16, 17]):
-            app = criar_aplicacao(tmp_path / f"rodada{rodada}.db")
+            app = criar_aplicacao(tmp_path / f"rodada{rodada}.db", relogio=lambda: AGORA)
             codigos = []
             trava = threading.Lock()
             largada = threading.Barrier(2)

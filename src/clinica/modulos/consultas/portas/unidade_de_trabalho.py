@@ -1,3 +1,4 @@
+from contextlib import AbstractContextManager
 from typing import Protocol, Self
 
 from clinica.modulos.agenda.portas.agenda_repositorio import AgendaRepositorio
@@ -32,6 +33,10 @@ class UnidadeDeTrabalho(Protocol):
     def __enter__(self) -> Self: ...
 
     def __exit__(self, tipo_exc, exc, tb) -> None: ...
+
+    def leitura(self) -> AbstractContextManager[Self]:
+        """Abre uma transação somente de leitura sem reservar a escrita."""
+        ...
 
     def commit(self) -> None: ...
 

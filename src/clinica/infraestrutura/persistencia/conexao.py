@@ -11,7 +11,7 @@ def abrir_conexao(caminho: str | Path) -> sqlite3.Connection:
 
     ``isolation_level=None`` desliga os BEGIN automáticos do módulo ``sqlite3``;
     quem decide quando a transação começa é a ``SQLiteUnidadeDeTrabalho``
-    (``BEGIN IMMEDIATE``, ADR-003).
+    (``BEGIN IMMEDIATE`` para escrita, ADR-003, e ``BEGIN`` para leitura).
     """
     conexao = sqlite3.connect(caminho, isolation_level=None)
     conexao.row_factory = sqlite3.Row

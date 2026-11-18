@@ -9,6 +9,7 @@ from clinica.compartilhado.erros import (
     EntidadeNaoEncontradaError,
     HorarioIndisponivelError,
     NaoAutorizadoError,
+    SlotInvalidoError,
 )
 from clinica.modulos.autenticacao.portas.servico_autenticacao import Papel, Usuario
 from clinica.modulos.agenda.dominio.slot import Slot
@@ -51,6 +52,10 @@ class AgendarConsulta:
         # Consulta e notificação pendente só valem juntas, no commit (ver
         # UnidadeDeTrabalho). Qualquer erro antes dele desfaz as duas.
         with self._uow as uow:
+            agora = self._relogio()
+            if not slot.esta_no_futuro(agora):
+                raise SlotInvalidoError("O horário da consulta deve estar no futuro.")
+
             paciente = uow.pacientes.obter_por_id(comando.usuario.id)
             if paciente is None:
                 raise EntidadeNaoEncontradaError("Paciente não encontrado.")
@@ -67,7 +72,7 @@ class AgendarConsulta:
                 paciente.id, uow.consultas.listar_consultas_ativas_paciente(paciente.id)
             )
             agenda_paciente.verificar_pode_agendar(
-                slot, profissional.especialidade.id, self._relogio()
+                slot, profissional.especialidade.id, agora
             )
 
             consulta = Consulta(
