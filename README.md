@@ -7,10 +7,10 @@ e reagendamento de consultas, além de controlar conflitos de horários e
 confirmações.
 
 Integrantes:
-Arthur dos Santos Lima Gropp - GRR20211769
-Gabriel Lisboa Conegero      - GRR20221255
-Luize Cunha Duarte           - GRR20221232
-Vinicius Evair da Silva      - GRR20221251
+- Arthur dos Santos Lima Gropp - GRR20211769
+- Gabriel Lisboa Conegero - GRR20221255
+- Luize Cunha Duarte - GRR20221232
+- Vinicius Evair da Silva - GRR20221251
 
 ## Escopo
 
