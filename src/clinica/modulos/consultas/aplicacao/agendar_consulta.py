@@ -39,15 +39,7 @@ class AgendarConsulta:
         self._relogio = relogio
 
     def executar(self, comando: AgendarConsultaComando) -> Consulta:
-        """Registra a consulta como ``AGENDADA`` e a notificação pendente, atomicamente.
-
-        Raises:
-            SlotInvalidoError: horário fora da grade de 30 minutos.
-            EntidadeNaoEncontradaError: paciente ou profissional inexistente.
-            HorarioIndisponivelError: fora do atendimento, bloqueado ou ocupado.
-            ConflitoDoPacienteError: o paciente já tem consulta nesse horário.
-            LimiteDoPacienteExcedidoError: viola a RN08.
-        """
+        """Registra a consulta como ``AGENDADA`` e a notificação pendente, atomicamente."""
         slot = Slot.a_partir_de(comando.inicio)
 
         # Consulta e notificação pendente só valem juntas, no commit (ver
@@ -66,7 +58,7 @@ class AgendarConsulta:
             agenda_profissional.verificar_disponivel(slot)
 
             agenda_paciente = AgendaPaciente(
-                paciente.id, uow.consultas.listar_ativas_do_paciente(paciente.id)
+                paciente.id, uow.consultas.listar_consultas_ativas_paciente(paciente.id)
             )
             agenda_paciente.verificar_pode_agendar(
                 slot, profissional.especialidade.id, self._relogio()

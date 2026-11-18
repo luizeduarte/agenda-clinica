@@ -19,6 +19,6 @@ def carregar_agenda_do_profissional(
         horarios_atendimento=uow.agendas.obter_horarios_atendimento(profissional_id),
         bloqueios=uow.agendas.listar_bloqueios(profissional_id, inicio, fim),
         slots_ocupados=[
-            c.slot for c in uow.consultas.listar_ativas_do_profissional(profissional_id, inicio, fim)
+            c.slot for c in uow.consultas.listar_consultas_ativas_profissional(profissional_id, inicio, fim)
         ],
     )

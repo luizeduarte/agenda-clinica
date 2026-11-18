@@ -1,9 +1,4 @@
-"""``AgendaProfissional``: disponibilidade de um profissional (RF02, RF06, RN01, RN03, RN04).
-
-Avalia tudo em memória, a partir dos dados recebidos. Recebe os slots ocupados
-e não objetos ``Consulta``, para que o módulo ``agenda`` não dependa de
-``consultas``.
-"""
+"""``AgendaProfissional``: disponibilidade de um profissional (RF02, RF06, RN01, RN03, RN04)."""
 from collections.abc import Iterable
 from datetime import date
 
@@ -39,7 +34,6 @@ class AgendaProfissional:
         return [s for s in self.slots_de_atendimento(dia) if self._motivo_indisponivel(s) is None]
 
     def verificar_disponivel(self, slot: Slot) -> None:
-        """Levanta ``HorarioIndisponivelError`` se o slot não puder ser reservado."""
         motivo = self._motivo_indisponivel(slot)
         if motivo is not None:
             raise HorarioIndisponivelError(motivo)

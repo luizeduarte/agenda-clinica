@@ -129,13 +129,13 @@ class TestConsistencia:
         agendar.executar(comando(paciente=7))
 
         uow = UnidadeDeTrabalhoEmMemoria(banco)
-        leitura_antiga = uow.consultas.listar_ativas_do_profissional
-        uow.consultas.listar_ativas_do_profissional = lambda *a, **k: []  # leitura obsoleta
+        leitura_antiga = uow.consultas.listar_consultas_ativas_profissional
+        uow.consultas.listar_consultas_ativas_profissional = lambda *a, **k: []  # leitura obsoleta
         concorrente = AgendarConsulta(uow, relogio=lambda: AGORA)
 
         with pytest.raises(HorarioIndisponivelError, match="outra reserva"):
             concorrente.executar(comando(paciente=8))
-        uow.consultas.listar_ativas_do_profissional = leitura_antiga
+        uow.consultas.listar_consultas_ativas_profissional = leitura_antiga
 
         assert len(banco.consultas) == 1
 
@@ -144,7 +144,7 @@ class TestConsistencia:
         agendar.executar(comando(profissional=10))
 
         uow = UnidadeDeTrabalhoEmMemoria(banco)
-        uow.consultas.listar_ativas_do_paciente = lambda *a, **k: []  # leitura obsoleta
+        uow.consultas.listar_consultas_ativas_paciente = lambda *a, **k: []  # leitura obsoleta
         concorrente = AgendarConsulta(uow, relogio=lambda: AGORA)
 
         with pytest.raises(ConflitoDoPacienteError):

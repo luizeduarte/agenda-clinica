@@ -10,8 +10,6 @@ class Papel(str, Enum):
 
 @dataclass(frozen=True)
 class Usuario:
-    """Identidade já autenticada. ``id`` refere-se a ``Paciente`` ou ``Profissional`` conforme o papel."""
-
     id: int
     papel: Papel
 
