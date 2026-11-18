@@ -1,0 +1,13 @@
+COMO VISUALIZAR OS DIAGRAMAS
+
+Os arquivos .puml são diagramas escritos em PlantUML.
+
+No VS Code:
+1. Instale a extensão "PlantUML" (jebbs).
+2. Abra um arquivo .puml da pasta docs/diagramas.
+3. Pressione Alt + D para visualizar o diagrama.
+
+Sem instalar nada:
+1. Acesse https://www.planttext.com/
+2. Cole o conteúdo do arquivo .puml no editor.
+3. Clique para atualizar a visualização.

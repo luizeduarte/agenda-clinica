@@ -1,0 +1,66 @@
+@startuml componentes
+
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam defaultFontSize 14
+skinparam titleFontSize 18
+skinparam componentStyle rectangle
+skinparam componentBackgroundColor white
+skinparam packageStyle rectangle
+skinparam packageTitleAlignment left
+skinparam packageBackgroundColor white
+skinparam legendBackgroundColor white
+skinparam nodesep 28
+
+title Componentes - Clínica universitária
+
+component "Cliente web" as Web
+
+package "Backend — monólito modular" {
+  component "API REST\nAgendamentoController" as API
+  component "Consultas\nAgendarConsulta\nAgendaPaciente (domínio)" as Consultas
+  component "Agenda\nConsultarDisponibilidade" as Agenda
+  component Cadastros
+  component "Notificações" as Notificacoes
+  component "Autenticação" as Autenticacao
+
+  rectangle "«interfaces»\nPortas de persistência\nRepositórios\nUnidadeDeTrabalho" as Dados
+  rectangle "«interface»\nNotificador" as Notificador
+  rectangle "«interface»\nServicoAutenticacao" as ServicoAutenticacao
+  component "Adaptadores SQLite\nRepositórios e\nSQLiteUnidadeDeTrabalho" as SQLite
+  component NotificadorFake
+  component ServicoAutenticacaoFake
+  component ProcessadorNotificacoes
+}
+
+database "SQLite\nConsultas e pendências" as Banco
+
+Web -down-> API : HTTP/JSON
+API ..> Consultas
+API ..> Agenda
+API ..> Autenticacao
+Consultas ..> Agenda : Slot e\ndisponibilidade
+Consultas ..> Cadastros
+Consultas ..> Dados
+Agenda ..> Dados
+Cadastros ..> Dados : PacienteRepositorio e\nProfissionalRepositorio
+Autenticacao ..> ServicoAutenticacao
+ServicoAutenticacaoFake .up.|> ServicoAutenticacao
+
+ProcessadorNotificacoes ..> Notificacoes : execução posterior
+Notificacoes ..> Dados : pendências e\ntentativas
+Notificacoes ..> Notificador
+NotificadorFake .up.|> Notificador
+
+SQLite .up.|> Dados
+SQLite -down-> Banco : transação local
+
+legend bottom
+  As portas de persistência agrupam interfaces distintas.
+  SQLite: BEGIN IMMEDIATE e índices únicos parciais para
+  profissional e paciente por início de consulta ativa (ADR-003).
+  Consulta e pendência compartilham a transação. O processador
+  pode rodar fora do processo da API (ADR-002).
+endlegend
+@enduml
