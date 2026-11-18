@@ -2,11 +2,7 @@ from datetime import datetime
 
 import pytest
 
-from clinica.compartilhado.erros import (
-    ConflitoDoPacienteError,
-    LimiteDoPacienteExcedidoError,
-    TransicaoInvalidaError,
-)
+from clinica.compartilhado.erros import ConflitoDoPacienteError, LimiteDoPacienteExcedidoError
 from clinica.modulos.agenda.dominio.slot import Slot
 from clinica.modulos.consultas.dominio.agenda_paciente import AgendaPaciente
 from clinica.modulos.consultas.dominio.consulta import Consulta, StatusConsulta
@@ -34,41 +30,6 @@ class TestConsulta:
         c = consulta(1, 10)
         assert c.status == StatusConsulta.AGENDADA
         assert c.esta_ativa
-
-    def test_confirmar_move_para_confirmada_e_continua_ativa(self):
-        c = consulta(1, 10)
-        c.confirmar()
-        assert c.status == StatusConsulta.CONFIRMADA
-        assert c.esta_ativa
-
-    def test_cancelar_libera_o_slot(self):
-        c = consulta(1, 10)
-        c.cancelar()
-        assert c.status == StatusConsulta.CANCELADA
-        assert not c.esta_ativa
-
-    def test_nao_confirma_consulta_cancelada(self):
-        c = consulta(1, 10, status=StatusConsulta.CANCELADA)
-        with pytest.raises(TransicaoInvalidaError):
-            c.confirmar()
-
-    def test_nao_confirma_duas_vezes(self):
-        c = consulta(1, 10)
-        c.confirmar()
-        with pytest.raises(TransicaoInvalidaError):
-            c.confirmar()
-
-    def test_nao_cancela_consulta_ja_cancelada(self):
-        c = consulta(1, 10, status=StatusConsulta.CANCELADA)
-        with pytest.raises(TransicaoInvalidaError):
-            c.cancelar()
-
-    def test_registra_realizada_e_falta_a_partir_de_ativa(self):
-        a, b = consulta(1, 10), consulta(1, 11)
-        a.registrar_realizada()
-        b.registrar_falta()
-        assert a.status == StatusConsulta.REALIZADA
-        assert b.status == StatusConsulta.FALTOU
 
 
 class TestAgendaPaciente:

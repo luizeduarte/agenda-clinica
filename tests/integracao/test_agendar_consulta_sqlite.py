@@ -5,10 +5,11 @@ from datetime import datetime
 
 import pytest
 
-from clinica.compartilhado.erros import ConflitoDoPacienteError, HorarioIndisponivelError
+from clinica.compartilhado.erros import HorarioIndisponivelError, NaoAutorizadoError
 from clinica.infraestrutura.persistencia import SQLiteUnidadeDeTrabalho, inicializar_banco
 from clinica.infraestrutura.persistencia.conexao import abrir_conexao
 from clinica.infraestrutura.persistencia.dados_exemplo import popular_dados_de_exemplo
+from clinica.modulos.autenticacao.portas.servico_autenticacao import Papel, Usuario
 from clinica.modulos.consultas.aplicacao.agendar_consulta import (
     AgendarConsulta,
     AgendarConsultaComando,
@@ -56,7 +57,7 @@ def total(caminho, tabela):
 
 
 def test_agenda_persiste_consulta_e_notificacao(agendar, caminho):
-    consulta = agendar.executar(AgendarConsultaComando(7, 10, inicio(10)))
+    consulta = agendar.executar(AgendarConsultaComando(Usuario(7, Papel.PACIENTE), 10, inicio(10)))
 
     assert consulta.id is not None
     assert len(consultas_ativas(caminho)) == 1
@@ -64,10 +65,10 @@ def test_agenda_persiste_consulta_e_notificacao(agendar, caminho):
 
 
 def test_horario_ocupado_nao_grava_nada_alem_da_primeira(agendar, caminho):
-    agendar.executar(AgendarConsultaComando(7, 10, inicio(10)))
+    agendar.executar(AgendarConsultaComando(Usuario(7, Papel.PACIENTE), 10, inicio(10)))
 
     with pytest.raises(HorarioIndisponivelError):
-        agendar.executar(AgendarConsultaComando(8, 10, inicio(10)))
+        agendar.executar(AgendarConsultaComando(Usuario(8, Papel.PACIENTE), 10, inicio(10)))
 
     assert len(consultas_ativas(caminho)) == 1
     assert total(caminho, "notificacao_pendente") == 1
@@ -102,13 +103,13 @@ def test_falha_ao_gravar_a_pendencia_desfaz_a_consulta(caminho):
     agendar = AgendarConsulta(UnidadeComDefeito(), relogio=lambda: AGORA)
 
     with pytest.raises(RuntimeError):
-        agendar.executar(AgendarConsultaComando(7, 10, inicio(10)))
+        agendar.executar(AgendarConsultaComando(Usuario(7, Papel.PACIENTE), 10, inicio(10)))
 
     assert total(caminho, "consulta") == 0
 
 
 def test_disponibilidade_reflete_o_que_foi_agendado(agendar, caminho):
-    agendar.executar(AgendarConsultaComando(7, 10, inicio(8, 30)))
+    agendar.executar(AgendarConsultaComando(Usuario(7, Papel.PACIENTE), 10, inicio(8, 30)))
 
     (resultado,) = ConsultarDisponibilidade(SQLiteUnidadeDeTrabalho(caminho)).executar(
         TERCA.date(), profissional_id=10
@@ -151,7 +152,7 @@ def test_asr01_pacientes_diferentes_disputam_o_mesmo_horario(caminho):
 
     resultados = _disparar_em_paralelo(
         [
-            (lambda pid=20 + i: agendar.executar(AgendarConsultaComando(pid, 10, inicio(10))))
+            (lambda pid=20 + i: agendar.executar(AgendarConsultaComando(Usuario(pid, Papel.PACIENTE), 10, inicio(10))))
             for i in range(8)
         ]
     )
@@ -168,8 +169,8 @@ def test_asr01_mesmo_paciente_com_profissionais_diferentes_no_mesmo_horario(cami
 
     resultados = _disparar_em_paralelo(
         [
-            lambda: agendar.executar(AgendarConsultaComando(7, 10, inicio(10))),
-            lambda: agendar.executar(AgendarConsultaComando(7, 11, inicio(10))),
+            lambda: agendar.executar(AgendarConsultaComando(Usuario(7, Papel.PACIENTE), 10, inicio(10))),
+            lambda: agendar.executar(AgendarConsultaComando(Usuario(7, Papel.PACIENTE), 11, inicio(10))),
         ]
     )
 
@@ -183,11 +184,19 @@ def test_asr01_horarios_diferentes_nao_se_atrapalham(caminho):
 
     resultados = _disparar_em_paralelo(
         [
-            lambda: agendar.executar(AgendarConsultaComando(7, 10, inicio(8))),
-            lambda: agendar.executar(AgendarConsultaComando(8, 10, inicio(9))),
-            lambda: agendar.executar(AgendarConsultaComando(8, 11, inicio(14))),
+            lambda: agendar.executar(AgendarConsultaComando(Usuario(7, Papel.PACIENTE), 10, inicio(8))),
+            lambda: agendar.executar(AgendarConsultaComando(Usuario(8, Papel.PACIENTE), 10, inicio(9))),
+            lambda: agendar.executar(AgendarConsultaComando(Usuario(8, Papel.PACIENTE), 11, inicio(14))),
         ]
     )
 
     assert all(not isinstance(r, Exception) for r in resultados), resultados
     assert len(consultas_ativas(caminho)) == 3
+
+
+def test_profissional_recusado_nao_deixa_nada_no_banco(agendar, caminho):
+    with pytest.raises(NaoAutorizadoError):
+        agendar.executar(AgendarConsultaComando(Usuario(10, Papel.PROFISSIONAL), 10, inicio(10)))
+
+    assert total(caminho, "consulta") == 0
+    assert total(caminho, "notificacao_pendente") == 0

@@ -7,14 +7,9 @@ a cronológica.
 
 Para ler, basta ``datetime.fromisoformat`` e ``time.fromisoformat``.
 """
-from datetime import datetime, time
+from datetime import datetime
 
 
 def para_texto(momento: datetime) -> str:
     """Data e hora, sem frações de segundo: ``2026-12-01T10:00:00``."""
     return momento.isoformat(timespec="seconds")
-
-
-def hora_para_texto(hora: time) -> str:
-    """Hora do dia: ``08:00``."""
-    return hora.strftime("%H:%M")
