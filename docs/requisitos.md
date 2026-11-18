@@ -43,7 +43,7 @@ O **sistema proposto** contempla as funcionalidades especificadas abaixo. Já o 
 - **RN05 - Cancelamento:** quando solicitado pelo **paciente**, o cancelamento é permitido até **24 horas antes** do início da consulta para atendimentos gerais, ou até **72 horas antes** para atendimentos da especialidade **Odontologia (Dentista)**. Cancelamentos realizados pelo **profissional** não estão sujeitos a essa trava de antecedência.
 - **RN06 - Reagendamento:** a alteração de horário deve verificar a disponibilidade do novo horário e garantir que a consulta original seja preservada intacta caso o novo agendamento não possa ser concluído.
 - **RN07 - Confirmação:** criar um agendamento e receber a confirmação do paciente são operações distintas. Caso o paciente não confirme antecipadamente, a consulta permanece válida e reservando o horário no estado `AGENDADA` até que seja confirmada, cancelada ou encerrada como realizada/falta.
-- **RN08 - Limite de agendamentos do paciente:** para evitar acaparamento da agenda (negação de serviço por reservas excessivas), um paciente pode manter no máximo **2 consultas ativas no mesmo dia** e no máximo **1 consulta ativa futura por especialidade**.
+- **RN08 - Limite de agendamentos do paciente:** para evitar acaparamento da agenda, um paciente pode manter no máximo **2 consultas ativas no mesmo dia** e no máximo **1 consulta ativa futura por especialidade**.
 
 ## 5. Restrições
 
@@ -56,8 +56,6 @@ A definição de papéis e permissões descrita no **RNF03** é uma decisão de 
 ### 5.2. Integração com o sistema de autenticação universitário
 
 O sistema deverá utilizar o serviço de autenticação da universidade para identificar profissionais e estagiários, evitando manter credenciais próprias para esses usuários.
-
-A integração será realizada por meio da interface `ServicoAutenticacao`, isolando as regras de negócio da implementação concreta do serviço externo e favorecendo a modificabilidade.
 
 No protótipo, a autenticação será simulada pelo adaptador `ServicoAutenticacaoFake`, preservando o contrato definido sem depender do acesso ao sistema real da universidade.
 
@@ -106,7 +104,7 @@ No protótipo, a autenticação será simulada pelo adaptador `ServicoAutenticac
 | **Resposta esperada** | A consulta é gravada e o agendamento é confirmado ao paciente. A notificação permanece na fila, a falha é registrada e o envio é tentado novamente depois. |
 | **Medida da resposta** | 100% dos agendamentos válidos são concluídos mesmo com o canal indisponível. Toda tentativa com falha fica registrada (estado, número de tentativas e último erro), e nenhuma notificação é perdida: ela continua na fila até ser enviada. |
 
-**Impacto arquitetural:** registrar **consulta e notificação pendente na mesma transação** e enviar posteriormente por processamento separado. A proposta utiliza tabela de pendências no mesmo banco transacional, sem exigir um broker de mensagens externo.
+**Impacto arquitetural:** registrar **consulta e notificação pendente na mesma transação** e enviar posteriormente por processamento separado.
 
 > **Terminologia:** o estado `CONFIRMADA` significa confirmação do **paciente** (RF07). A resposta bem-sucedida de RF03 informa apenas que o **agendamento foi registrado** (`AGENDADA`). Ambos `AGENDADA` e `CONFIRMADA` ocupam o slot.
 

@@ -77,8 +77,9 @@ Consulta "0..*" -right- "1" Paciente : reserva de
 Profissional "1" -down- "1" AgendaProfissional
 AgendaPaciente "1" -up-> "1" Paciente
 AgendaPaciente "0..1" -up-> "0..*" Consulta : /consultas ativas
+
 Consulta "1" *-down- "1" Slot : período
-AgendaProfissional -right-> "0..*" Slot : ocupados
+AgendaProfissional "0..*" -right-> "0..*" Slot : ocupados
 AgendaProfissional "1" -down- "0..*" HorarioAtendimento : horários
 AgendaProfissional "0..*" -down- "0..*" Bloqueio : bloqueios
 
