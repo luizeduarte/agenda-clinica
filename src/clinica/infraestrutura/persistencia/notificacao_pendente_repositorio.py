@@ -6,21 +6,12 @@ from clinica.modulos.notificacoes.dominio.notificacao import (
     NotificacaoPendente,
     TipoNotificacao,
 )
+from clinica.modulos.notificacoes.portas.notificacao_pendente_repositorio import (
+    NotificacaoPendenteRepositorio,
+)
 
 
-def _para_pendente(linha: sqlite3.Row) -> NotificacaoPendente:
-    return NotificacaoPendente(
-        notificacao=Notificacao(
-            linha["destinatario"], TipoNotificacao(linha["tipo"]), linha["texto"]
-        ),
-        estado=EstadoNotificacao(linha["estado"]),
-        tentativas=linha["tentativas"],
-        ultimo_erro=linha["ultimo_erro"],
-        id=linha["id"],
-    )
-
-
-class SQLiteNotificacaoPendenteRepositorio:
+class SQLiteNotificacaoPendenteRepositorio(NotificacaoPendenteRepositorio):
     """Implementa a tabela de pendências (Transactional Outbox, ADR-002).
 
     Usa a conexão da unidade de trabalho: a pendência só existe se a consulta
@@ -29,6 +20,18 @@ class SQLiteNotificacaoPendenteRepositorio:
 
     def __init__(self, conexao: sqlite3.Connection) -> None:
         self._con = conexao
+
+    @staticmethod
+    def _para_pendente(linha: sqlite3.Row) -> NotificacaoPendente:
+        return NotificacaoPendente(
+            notificacao=Notificacao(
+                linha["destinatario"], TipoNotificacao(linha["tipo"]), linha["texto"]
+            ),
+            estado=EstadoNotificacao(linha["estado"]),
+            tentativas=linha["tentativas"],
+            ultimo_erro=linha["ultimo_erro"],
+            id=linha["id"],
+        )
 
     def adicionar(self, pendente: NotificacaoPendente) -> NotificacaoPendente:
         n = pendente.notificacao
@@ -54,7 +57,7 @@ class SQLiteNotificacaoPendenteRepositorio:
             " ORDER BY id LIMIT ?",
             (limite,),
         )
-        return [_para_pendente(linha) for linha in linhas]
+        return [self._para_pendente(linha) for linha in linhas]
 
     def atualizar(self, pendente: NotificacaoPendente) -> None:
         self._con.execute(

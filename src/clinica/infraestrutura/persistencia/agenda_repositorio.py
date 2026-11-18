@@ -3,9 +3,10 @@ from datetime import datetime, time
 
 from clinica.infraestrutura.persistencia.conversao import para_texto
 from clinica.modulos.agenda.dominio.horarios import Bloqueio, HorarioAtendimento
+from clinica.modulos.agenda.portas.agenda_repositorio import AgendaRepositorio
 
 
-class SQLiteAgendaRepositorio:
+class SQLiteAgendaRepositorio(AgendaRepositorio):
     """Implementa ``AgendaRepositorio`` sobre a conexão da unidade de trabalho."""
 
     def __init__(self, conexao: sqlite3.Connection) -> None:

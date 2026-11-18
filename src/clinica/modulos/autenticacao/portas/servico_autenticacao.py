@@ -1,6 +1,6 @@
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Protocol
 
 
 class Papel(str, Enum):
@@ -14,13 +14,13 @@ class Usuario:
     papel: Papel
 
 
-class ServicoAutenticacao(Protocol):
+class ServicoAutenticacao(ABC):
     """Contrato com a autenticação universitária (RNF03, restrição 5.2)."""
 
+    @abstractmethod
     def identificar(self, credencial: str) -> Usuario:
         """Resolve a credencial (ex.: token do cabeçalho) em um ``Usuario``.
 
         Raises:
             NaoAutenticadoError: credencial desconhecida ou inválida.
         """
-        ...

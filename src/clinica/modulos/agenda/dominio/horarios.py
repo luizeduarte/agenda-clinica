@@ -6,10 +6,6 @@ from clinica.compartilhado.erros import HorarioDeAtendimentoInvalidoError
 from clinica.modulos.agenda.dominio.slot import DURACAO, MINUTOS_DA_GRADE, Slot
 
 
-def _hora_na_grade(hora: time) -> bool:
-    return hora.minute in MINUTOS_DA_GRADE and hora.second == 0 and hora.microsecond == 0
-
-
 @dataclass(frozen=True)
 class HorarioAtendimento:
     """Período semanal recorrente. ``dia_semana``: 0 = segunda ... 6 = domingo.
@@ -21,12 +17,16 @@ class HorarioAtendimento:
     hora_inicio: time
     hora_fim: time
 
+    @staticmethod
+    def _hora_na_grade(hora: time) -> bool:
+        return hora.minute in MINUTOS_DA_GRADE and hora.second == 0 and hora.microsecond == 0
+
     def __post_init__(self) -> None:
         if not 0 <= self.dia_semana <= 6:
             raise HorarioDeAtendimentoInvalidoError("dia_semana deve estar entre 0 e 6.")
         if self.hora_inicio >= self.hora_fim:
             raise HorarioDeAtendimentoInvalidoError("O período deve terminar depois de começar.")
-        if not (_hora_na_grade(self.hora_inicio) and _hora_na_grade(self.hora_fim)):
+        if not (self._hora_na_grade(self.hora_inicio) and self._hora_na_grade(self.hora_fim)):
             raise HorarioDeAtendimentoInvalidoError(
                 "O período deve começar e terminar em :00 ou :30."
             )
@@ -42,20 +42,6 @@ class HorarioAtendimento:
             slots.append(Slot.a_partir_de(atual))
             atual += DURACAO
         return slots
-
-
-def validar_grade_semanal(horarios: list[HorarioAtendimento]) -> None:
-    """Períodos do mesmo profissional no mesmo dia da semana não podem se sobrepor."""
-    por_dia: dict[int, list[HorarioAtendimento]] = {}
-    for horario in horarios:
-        por_dia.setdefault(horario.dia_semana, []).append(horario)
-    for periodos in por_dia.values():
-        periodos.sort(key=lambda h: h.hora_inicio)
-        for anterior, seguinte in zip(periodos, periodos[1:]):
-            if seguinte.hora_inicio < anterior.hora_fim:
-                raise HorarioDeAtendimentoInvalidoError(
-                    "Períodos de atendimento do mesmo dia não podem se sobrepor."
-                )
 
 
 @dataclass(frozen=True)

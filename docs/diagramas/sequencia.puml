@@ -20,44 +20,41 @@ participant "AgendaPaciente" as APA
 participant "NotificacaoPendenteRepositorio" as NREP
 database "SQLite" as DB
 
-P -> C : POST /consultas (profissional, inicio)
+P -> C : POST /consultas (profissional_id, inicio)
 opt Porta aplicável à identificação
-  C -> AUTH : identificarUsuario()
-  AUTH --> C : contexto de identidade
+  C -> AUTH : identificar(credencial)
+  AUTH --> C : usuario
 end
 note over C
-  A identificação do paciente está a definir.
   Agendar requer autorização pelo papel (RNF03).
 end note
+C -> UC : executar(comando)
 alt Papel sem permissão
+  UC --> C : NaoAutorizadoError
   C --> P : 403 Forbidden
 else Paciente identificado e autorizado
-  C -> UC : executar(dados)
-
-  UC -> UOW : iniciar()
-  UOW -> DB : BEGIN IMMEDIATE
-  UC -> CAD : obterPacienteEProfissional()
-  CAD --> UC : paciente, profissional, especialidade
-  UC -> AGREP : buscarHorariosEBloqueios(profissional)
-  AGREP --> UC : horarios e bloqueios
-  UC -> CREP : listarAtivas(profissional, paciente)
-  CREP --> UC : consultas ativas
-
-  UC -> SLOT : validarGrade()
+  UC -> SLOT : a_partir_de(inicio) / validar_grade()
 
   alt Dados ou slot invalidos
-    SLOT --> UC : invalido
-    UC -> UOW : rollback()
-    UOW -> DB : ROLLBACK
+    SLOT --> UC : SlotInvalidoError
     UC --> C : erro de validacao
     C --> P : 400 Bad Request
   else Slot valido
-    SLOT --> UC : válido
+    SLOT --> UC : slot
+    UC -> UOW : iniciar()
+    UOW -> DB : BEGIN IMMEDIATE
+    UC -> CAD : obter_por_id(paciente_id)\ne obter_por_id(profissional_id)
+    CAD --> UC : paciente, profissional
+    UC -> AGREP : obter_horarios_atendimento(profissional_id)\ne listar_bloqueios(profissional_id, inicio, fim)
+    AGREP --> UC : horarios e bloqueios
+    UC -> CREP : listar_consultas_ativas_profissional(...)\ne listar_consultas_ativas_paciente(...)
+    CREP --> UC : consultas ativas
+
     note over AP, APA : Agendas montadas com os dados carregados.
-    UC -> AP : estaDisponivel(slot)
-    AP --> UC : disponivel / indisponivel
-    UC -> APA : podeAgendar(slot, especialidade_id)
-    APA --> UC : permitido / impedido
+    UC -> AP : verificar_disponivel(slot)
+    AP --> UC : disponivel / HorarioIndisponivelError
+    UC -> APA : verificar_pode_agendar(slot, especialidade_id, agora)
+    APA --> UC : permitido / conflito ou limite
 
     alt Conflito, bloqueio ou limite excedido
       UC -> UOW : rollback()
@@ -68,9 +65,9 @@ else Paciente identificado e autorizado
       create participant "consulta: Consulta" as CONS
       UC -> CONS : «create» AGENDADA
       alt Duas gravações e commit bem-sucedidos
-        UC -> CREP : salvar(consulta)
+        UC -> CREP : adicionar(consulta)
         CREP -> DB : INSERT consulta
-        UC -> NREP : registrar(PENDENTE)
+        UC -> NREP : adicionar(pendente)
         NREP -> DB : INSERT notificacao_pendente
         UC -> UOW : commit()
         UOW -> DB : COMMIT
@@ -98,16 +95,19 @@ end
 == Processamento posterior (fora da requisicao HTTP) ==
 participant "ProcessadorNotificacoes" as PROC
 participant "Notificador" as NOTIF
-PROC -> NREP : listarPendentes()
+participant "pendente: NotificacaoPendente" as PEND
+PROC -> NREP : listar_para_envio()
 NREP --> PROC : notificacoes pendentes
 loop Para cada pendencia
-  PROC -> NOTIF : enviar(mensagem)
+  PROC -> NOTIF : enviar(notificacao)
   alt Envio bem-sucedido
     NOTIF --> PROC : sucesso
-    PROC -> NREP : marcarENVIADA()
+    PROC -> PEND : marcar_enviada()
+    PROC -> NREP : atualizar(pendente)
   else Falha no canal externo
     NOTIF --> PROC : falha
-    PROC -> NREP : registrarFALHA() / permitir reenvio
+    PROC -> PEND : registrar_falha(erro)
+    PROC -> NREP : atualizar(pendente)
   end
 end
 

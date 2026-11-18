@@ -45,7 +45,7 @@ def test_consulta_cancelada_libera_o_slot(consultar, uow):
     consulta = AgendarConsulta(uow, relogio=lambda: AGORA).executar(
         AgendarConsultaComando(Usuario(7, Papel.PACIENTE), 10, dt(8, 30))
     )
-    consulta.status = StatusConsulta.CANCELADA  # o cancelamento em si está fora do recorte
+    consulta.cancelar()  # o caso de uso CancelarConsulta está fora do recorte
 
     (resultado,) = consultar.executar(TERCA, profissional_id=10)
 

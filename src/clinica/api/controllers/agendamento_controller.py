@@ -51,33 +51,48 @@ class AgendamentoController:
             raise NaoAutenticadoError("Informe o cabeçalho 'Authorization: Bearer <token>'.")
         return self._autenticacao.identificar(token.strip())
 
+    def consultar_disponibilidade(
+        self,
+        dia: date,
+        profissional_id: int | None = None,
+        especialidade: str | None = None,
+        authorization: str | None = Header(default=None),
+    ):
+        self._identificar(authorization)
+        try:
+            resultado = self._consultar_disponibilidade.executar(
+                dia, profissional_id, especialidade
+            )
+        except ValueError as erro:
+            raise HTTPException(status_code=400, detail=str(erro)) from erro
+        return [DisponibilidadeResposta.de(item) for item in resultado]
+
+    def agendar_consulta(
+        self,
+        pedido: AgendarConsultaPedido,
+        authorization: str | None = Header(default=None),
+    ):
+        usuario = self._identificar(authorization)
+        consulta = self._agendar_consulta.executar(
+            AgendarConsultaComando(usuario, pedido.profissional_id, pedido.inicio)
+        )
+        return ConsultaResposta.de(consulta)
+
     def criar_rotas(self) -> APIRouter:
         rotas = APIRouter()
-
-        @rotas.get(
+        rotas.add_api_route(
             "/disponibilidade",
+            self.consultar_disponibilidade,
+            methods=["GET"],
             response_model=list[DisponibilidadeResposta],
             responses={400: RESPOSTA_400, 401: RESPOSTA_401, 404: RESPOSTA_404},
             summary="Consultar horários disponíveis (RF02)",
             description="Informe `profissional_id` **ou** `especialidade`, mais a data.",
         )
-        def consultar_disponibilidade(
-            dia: date,
-            profissional_id: int | None = None,
-            especialidade: str | None = None,
-            authorization: str | None = Header(default=None),
-        ):
-            self._identificar(authorization)
-            try:
-                resultado = self._consultar_disponibilidade.executar(
-                    dia, profissional_id, especialidade
-                )
-            except ValueError as erro:
-                raise HTTPException(status_code=400, detail=str(erro)) from erro
-            return [DisponibilidadeResposta.de(item) for item in resultado]
-
-        @rotas.post(
+        rotas.add_api_route(
             "/consultas",
+            self.agendar_consulta,
+            methods=["POST"],
             status_code=201,
             response_model=ConsultaResposta,
             responses={
@@ -90,14 +105,4 @@ class AgendamentoController:
             summary="Agendar consulta (RF03)",
             description="Somente pacientes agendam. A consulta nasce `AGENDADA`.",
         )
-        def agendar_consulta(
-            pedido: AgendarConsultaPedido,
-            authorization: str | None = Header(default=None),
-        ):
-            usuario = self._identificar(authorization)
-            consulta = self._agendar_consulta.executar(
-                AgendarConsultaComando(usuario, pedido.profissional_id, pedido.inicio)
-            )
-            return ConsultaResposta.de(consulta)
-
         return rotas

@@ -3,11 +3,8 @@ from datetime import date, datetime, time
 import pytest
 
 from clinica.compartilhado.erros import HorarioDeAtendimentoInvalidoError, SlotInvalidoError
-from clinica.modulos.agenda.dominio.horarios import (
-    Bloqueio,
-    HorarioAtendimento,
-    validar_grade_semanal,
-)
+from clinica.modulos.agenda.dominio.agenda_profissional import AgendaProfissional
+from clinica.modulos.agenda.dominio.horarios import Bloqueio, HorarioAtendimento
 from clinica.modulos.agenda.dominio.slot import Slot
 
 TERCA = date(2026, 12, 1)  # weekday() == 1
@@ -21,6 +18,7 @@ class TestSlot:
     def test_a_partir_de_cria_slot_de_30_minutos(self):
         slot = Slot.a_partir_de(dt(10, 0))
         assert slot.fim == dt(10, 30)
+        assert slot.validar_grade()
 
     @pytest.mark.parametrize("minuto", [0, 30])
     def test_aceita_inicio_na_grade(self, minuto):
@@ -74,7 +72,7 @@ class TestHorarioAtendimento:
 
     def test_rejeita_periodos_sobrepostos_no_mesmo_dia(self):
         with pytest.raises(HorarioDeAtendimentoInvalidoError):
-            validar_grade_semanal(
+            AgendaProfissional.validar_grade_semanal(
                 [
                     HorarioAtendimento(1, time(8, 0), time(12, 0)),
                     HorarioAtendimento(1, time(11, 30), time(14, 0)),
@@ -82,7 +80,7 @@ class TestHorarioAtendimento:
             )
 
     def test_aceita_periodos_encostados_e_em_dias_diferentes(self):
-        validar_grade_semanal(
+        AgendaProfissional.validar_grade_semanal(
             [
                 HorarioAtendimento(1, time(8, 0), time(12, 0)),
                 HorarioAtendimento(1, time(12, 0), time(14, 0)),

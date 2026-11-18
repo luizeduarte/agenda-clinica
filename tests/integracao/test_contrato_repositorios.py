@@ -232,8 +232,8 @@ class TestNotificacoesPendentes:
             b = uow.notificacoes_pendentes.adicionar(self.pendente("b"))
             uow.commit()
         with uow:
-            a.estado, a.tentativas = EstadoNotificacao.ENVIADA, 1
-            b.estado, b.tentativas, b.ultimo_erro = EstadoNotificacao.FALHA, 1, "timeout"
+            a.marcar_enviada()
+            b.registrar_falha("timeout")
             uow.notificacoes_pendentes.atualizar(a)
             uow.notificacoes_pendentes.atualizar(b)
             uow.commit()

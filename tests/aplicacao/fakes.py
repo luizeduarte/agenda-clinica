@@ -8,11 +8,21 @@ from datetime import datetime
 
 from clinica.compartilhado.erros import ConflitoDePersistenciaError
 from clinica.modulos.agenda.dominio.horarios import Bloqueio, HorarioAtendimento
+from clinica.modulos.agenda.portas.agenda_repositorio import AgendaRepositorio
 from clinica.modulos.cadastros.dominio.cadastros import Paciente, Profissional
+from clinica.modulos.cadastros.portas.repositorios import (
+    PacienteRepositorio,
+    ProfissionalRepositorio,
+)
 from clinica.modulos.consultas.dominio.consulta import Consulta
+from clinica.modulos.consultas.portas.consulta_repositorio import ConsultaRepositorio
+from clinica.modulos.consultas.portas.unidade_de_trabalho import UnidadeDeTrabalho
 from clinica.modulos.notificacoes.dominio.notificacao import (
     EstadoNotificacao,
     NotificacaoPendente,
+)
+from clinica.modulos.notificacoes.portas.notificacao_pendente_repositorio import (
+    NotificacaoPendenteRepositorio,
 )
 
 
@@ -37,7 +47,7 @@ class BancoEmMemoria:
         self.horarios, self.bloqueios, self.consultas, self.pendentes, self._proximo_id = estado
 
 
-class ConsultaRepositorioEmMemoria:
+class ConsultaRepositorioEmMemoria(ConsultaRepositorio):
     def __init__(self, banco: BancoEmMemoria) -> None:
         self._b = banco
 
@@ -64,7 +74,7 @@ class ConsultaRepositorioEmMemoria:
         return [c for c in self._b.consultas if c.esta_ativa and c.paciente_id == paciente_id]
 
 
-class AgendaRepositorioEmMemoria:
+class AgendaRepositorioEmMemoria(AgendaRepositorio):
     def __init__(self, banco: BancoEmMemoria) -> None:
         self._b = banco
 
@@ -78,7 +88,7 @@ class AgendaRepositorioEmMemoria:
         ]
 
 
-class PacienteRepositorioEmMemoria:
+class PacienteRepositorioEmMemoria(PacienteRepositorio):
     def __init__(self, banco: BancoEmMemoria) -> None:
         self._b = banco
 
@@ -86,7 +96,7 @@ class PacienteRepositorioEmMemoria:
         return self._b.pacientes.get(paciente_id)
 
 
-class ProfissionalRepositorioEmMemoria:
+class ProfissionalRepositorioEmMemoria(ProfissionalRepositorio):
     def __init__(self, banco: BancoEmMemoria) -> None:
         self._b = banco
 
@@ -100,7 +110,7 @@ class ProfissionalRepositorioEmMemoria:
         ]
 
 
-class NotificacaoPendenteRepositorioEmMemoria:
+class NotificacaoPendenteRepositorioEmMemoria(NotificacaoPendenteRepositorio):
     def __init__(self, banco: BancoEmMemoria) -> None:
         self._b = banco
 
@@ -119,7 +129,7 @@ class NotificacaoPendenteRepositorioEmMemoria:
         pass
 
 
-class UnidadeDeTrabalhoEmMemoria:
+class UnidadeDeTrabalhoEmMemoria(UnidadeDeTrabalho):
     """Snapshot ao entrar; restaura se sair sem ``commit()``."""
 
     def __init__(self, banco: BancoEmMemoria) -> None:
@@ -130,19 +140,17 @@ class UnidadeDeTrabalhoEmMemoria:
         self.profissionais = ProfissionalRepositorioEmMemoria(banco)
         self.notificacoes_pendentes = NotificacaoPendenteRepositorioEmMemoria(banco)
         self._estado = None
-        self._confirmada = False
+        self._aberta = False
 
-    def __enter__(self):
+    def iniciar(self) -> None:
         self._estado = copy.deepcopy(self._banco._mutavel())
-        self._confirmada = False
-        return self
-
-    def __exit__(self, tipo_exc, exc, tb) -> None:
-        if not self._confirmada:
-            self.rollback()
+        self._aberta = True
 
     def commit(self) -> None:
-        self._confirmada = True
+        if self._aberta:
+            self._aberta = False
 
     def rollback(self) -> None:
-        self._banco.restaurar(self._estado)
+        if self._aberta:
+            self._banco.restaurar(self._estado)
+            self._aberta = False

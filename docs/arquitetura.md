@@ -262,7 +262,6 @@ src/
     modulos/
       agenda/
         dominio/
-        aplicacao/
         portas/
       consultas/
         dominio/

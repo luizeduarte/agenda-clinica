@@ -1,4 +1,5 @@
-from typing import Protocol, Self
+from abc import ABC, abstractmethod
+from typing import Self
 
 from clinica.modulos.agenda.portas.agenda_repositorio import AgendaRepositorio
 from clinica.modulos.cadastros.portas.repositorios import (
@@ -11,7 +12,7 @@ from clinica.modulos.notificacoes.portas.notificacao_pendente_repositorio import
 )
 
 
-class UnidadeDeTrabalho(Protocol):
+class UnidadeDeTrabalho(ABC):
     """Agrupa gravações para que valham todas juntas ou nenhuma (ADR-002, ADR-003).
 
     Ao agendar, o sistema grava duas coisas.
@@ -29,10 +30,24 @@ class UnidadeDeTrabalho(Protocol):
     profissionais: ProfissionalRepositorio
     notificacoes_pendentes: NotificacaoPendenteRepositorio
 
-    def __enter__(self) -> Self: ...
+    def __enter__(self) -> Self:
+        self.iniciar()
+        return self
 
-    def __exit__(self, tipo_exc, exc, tb) -> None: ...
+    def __exit__(self, tipo_exc, exc, tb) -> None:
+        try:
+            self.rollback()
+        finally:
+            self._fechar()
 
+    @abstractmethod
+    def iniciar(self) -> None: ...
+
+    @abstractmethod
     def commit(self) -> None: ...
 
+    @abstractmethod
     def rollback(self) -> None: ...
+
+    def _fechar(self) -> None:
+        pass

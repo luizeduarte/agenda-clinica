@@ -18,8 +18,7 @@ from clinica.modulos.consultas.aplicacao.agenda_do_profissional import (
 from clinica.modulos.consultas.dominio.agenda_paciente import AgendaPaciente
 from clinica.modulos.consultas.dominio.consulta import Consulta
 from clinica.modulos.consultas.portas.unidade_de_trabalho import UnidadeDeTrabalho
-from clinica.modulos.notificacoes.aplicacao.mensagens import notificacao_de_agendamento
-from clinica.modulos.notificacoes.dominio.notificacao import NotificacaoPendente
+from clinica.modulos.notificacoes.dominio.notificacao import Notificacao, NotificacaoPendente
 
 
 @dataclass(frozen=True)
@@ -89,7 +88,15 @@ class AgendarConsulta:
                 ) from erro
 
             uow.notificacoes_pendentes.adicionar(
-                NotificacaoPendente(notificacao_de_agendamento(paciente, profissional, slot))
+                NotificacaoPendente(
+                    Notificacao.de_agendamento(
+                        destinatario=paciente.email,
+                        nome_paciente=paciente.nome,
+                        nome_profissional=profissional.nome,
+                        nome_especialidade=profissional.especialidade.nome,
+                        inicio=slot.inicio,
+                    )
+                )
             )
             uow.commit()
             return consulta

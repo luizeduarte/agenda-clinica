@@ -75,24 +75,13 @@ def test_horario_ocupado_nao_grava_nada_alem_da_primeira(agendar, caminho):
 
 
 def test_falha_ao_gravar_a_pendencia_desfaz_a_consulta(caminho):
-    class UnidadeComDefeito:
+    class UnidadeComDefeito(SQLiteUnidadeDeTrabalho):
         """Delega à unidade real, mas a gravação da pendência falha."""
-
-        def __init__(self):
-            self._uow = SQLiteUnidadeDeTrabalho(caminho)
-
-        def __enter__(self):
-            self._uow.__enter__()
-            return self
-
-        def __exit__(self, *args):
-            return self._uow.__exit__(*args)
-
-        def __getattr__(self, nome):
-            return getattr(self._uow, nome)
 
         @property
         def notificacoes_pendentes(self):
+            super().notificacoes_pendentes
+
             class Falha:
                 @staticmethod
                 def adicionar(_pendente):
@@ -100,7 +89,7 @@ def test_falha_ao_gravar_a_pendencia_desfaz_a_consulta(caminho):
 
             return Falha()
 
-    agendar = AgendarConsulta(UnidadeComDefeito(), relogio=lambda: AGORA)
+    agendar = AgendarConsulta(UnidadeComDefeito(caminho), relogio=lambda: AGORA)
 
     with pytest.raises(RuntimeError):
         agendar.executar(AgendarConsultaComando(Usuario(7, Papel.PACIENTE), 10, inicio(10)))

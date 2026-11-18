@@ -50,7 +50,7 @@ class TestFluxoPrincipal:
 
     def test_horario_cancelado_pode_ser_reagendado_por_outro_paciente(self, agendar, banco):
         primeira = agendar.executar(comando(paciente=7))
-        primeira.status = StatusConsulta.CANCELADA  # o cancelamento em si está fora do recorte
+        primeira.cancelar()  # o caso de uso CancelarConsulta está fora do recorte
 
         segunda = agendar.executar(comando(paciente=8))
 
