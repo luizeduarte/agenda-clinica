@@ -18,6 +18,7 @@ from clinica.api.erros import (
     RESPOSTA_403,
     RESPOSTA_404,
     RESPOSTA_409,
+    RESPOSTA_500,
 )
 from clinica.api.esquemas import (
     AgendarConsultaPedido,
@@ -80,7 +81,7 @@ class AgendamentoController:
             self.consultar_disponibilidade,
             methods=["GET"],
             response_model=list[DisponibilidadeResposta],
-            responses={400: RESPOSTA_400, 401: RESPOSTA_401, 404: RESPOSTA_404},
+            responses={400: RESPOSTA_400, 401: RESPOSTA_401, 404: RESPOSTA_404, 500: RESPOSTA_500},
             summary="Consultar horários disponíveis (RF02)",
             description="Informe `profissional_id` **ou** `especialidade`, mais a data.",
         )
@@ -96,6 +97,7 @@ class AgendamentoController:
                 403: RESPOSTA_403,
                 404: RESPOSTA_404,
                 409: RESPOSTA_409,
+                500: RESPOSTA_500,
             },
             summary="Agendar consulta (RF03)",
             description="Somente pacientes agendam. A consulta nasce `AGENDADA`.",

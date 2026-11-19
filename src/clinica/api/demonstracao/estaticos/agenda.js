@@ -1,0 +1,158 @@
+"use strict";
+
+const busca = document.querySelector("#busca");
+const reserva = document.querySelector("#reserva");
+const filtros = document.querySelector("#filtros");
+const escolha = document.querySelector("#escolha");
+const paciente = document.querySelector("#paciente");
+const filtro = document.querySelector("#filtro");
+const dia = document.querySelector("#dia");
+const horarios = document.querySelector("#horarios");
+const confirmar = document.querySelector("#confirmar");
+const mensagemHorarios = document.querySelector("#mensagem-horarios");
+const mensagemReserva = document.querySelector("#mensagem-reserva");
+let carregando = false;
+
+const amanha = new Date();
+amanha.setDate(amanha.getDate() + 1);
+dia.value = [amanha.getFullYear(), amanha.getMonth() + 1, amanha.getDate()]
+    .map(parte => String(parte).padStart(2, "0")).join("-");
+
+function mensagem(elemento, texto, tipo = "") {
+    elemento.textContent = texto;
+    elemento.dataset.tipo = tipo;
+}
+
+function selecionado() {
+    return horarios.querySelector('input[name="slot"]:checked');
+}
+
+function definirCarregamento(ativo) {
+    carregando = ativo;
+    filtros.disabled = ativo;
+    escolha.disabled = ativo;
+    escolha.setAttribute("aria-busy", String(ativo));
+    confirmar.disabled = ativo || !selecionado();
+}
+
+async function chamarApi(caminho, token, opcoes = {}) {
+    let resposta;
+    try {
+        resposta = await fetch(caminho, {
+            ...opcoes,
+            headers: { ...opcoes.headers, Authorization: `Bearer ${token}` },
+        });
+    } catch {
+        throw new Error("Não foi possível acessar a API. Verifique a conexão e tente novamente.");
+    }
+    const dados = await resposta.json().catch(() => null);
+    if (!resposta.ok || dados === null) {
+        throw new Error(dados?.erro || "A API não conseguiu concluir a solicitação.");
+    }
+    return dados;
+}
+
+function limparHorarios() {
+    horarios.replaceChildren();
+    confirmar.disabled = true;
+}
+
+function mostrarHorarios(disponibilidade) {
+    limparHorarios();
+    let total = 0;
+    for (const { profissional, slots } of disponibilidade) {
+        if (slots.length === 0) {
+            continue;
+        }
+        const grupo = document.createElement("section");
+        grupo.className = "profissional";
+        const nome = document.createElement("h3");
+        nome.textContent = profissional.nome;
+        const especialidade = document.createElement("p");
+        especialidade.textContent = profissional.especialidade;
+        const opcoes = document.createElement("div");
+        opcoes.className = "opcoes";
+
+        for (const slot of slots) {
+            const opcao = document.createElement("label");
+            opcao.className = "opcao";
+            const escolhaDoSlot = document.createElement("input");
+            escolhaDoSlot.type = "radio";
+            escolhaDoSlot.name = "slot";
+            escolhaDoSlot.value = slot.inicio;
+            escolhaDoSlot.dataset.profissionalId = profissional.id;
+            escolhaDoSlot.dataset.profissionalNome = profissional.nome;
+            const intervalo = `${slot.inicio.slice(11, 16)}–${slot.fim.slice(11, 16)}`;
+            escolhaDoSlot.setAttribute("aria-label", `${intervalo}, ${profissional.nome}`);
+            opcao.append(escolhaDoSlot, intervalo);
+            opcoes.append(opcao);
+        }
+
+        grupo.append(nome, especialidade, opcoes);
+        horarios.append(grupo);
+        total += slots.length;
+    }
+    mensagem(mensagemHorarios, total ? "Selecione um horário abaixo." : "Nenhum horário disponível nessa data.");
+}
+
+async function consultarHorarios() {
+    limparHorarios();
+    mensagem(mensagemHorarios, "Consultando disponibilidade…");
+    const opcao = filtro.selectedOptions[0];
+    const parametros = new URLSearchParams({ dia: dia.value, [opcao.dataset.parametro]: opcao.value });
+    try {
+        mostrarHorarios(await chamarApi(`/disponibilidade?${parametros}`, paciente.value));
+    } catch (erro) {
+        mensagem(mensagemHorarios, erro.message, "erro");
+    }
+}
+
+busca.addEventListener("change", () => {
+    limparHorarios();
+    mensagem(mensagemHorarios, "Consulte a disponibilidade para os filtros atuais.");
+    mensagem(mensagemReserva, "");
+});
+
+busca.addEventListener("submit", async evento => {
+    evento.preventDefault();
+    if (carregando) {
+        return;
+    }
+    definirCarregamento(true);
+    mensagem(mensagemReserva, "");
+    try {
+        await consultarHorarios();
+    } finally {
+        definirCarregamento(false);
+    }
+});
+
+reserva.addEventListener("change", () => {
+    confirmar.disabled = carregando || !selecionado();
+    mensagem(mensagemReserva, "");
+});
+
+reserva.addEventListener("submit", async evento => {
+    evento.preventDefault();
+    const slot = selecionado();
+    if (carregando || !slot) {
+        return;
+    }
+    definirCarregamento(true);
+    mensagem(mensagemReserva, "Registrando agendamento…");
+    try {
+        const consulta = await chamarApi("/consultas", paciente.value, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ profissional_id: Number(slot.dataset.profissionalId), inicio: slot.value }),
+        });
+        const data = consulta.inicio.slice(0, 10).split("-").reverse().join("/");
+        const hora = consulta.inicio.slice(11, 16);
+        mensagem(mensagemReserva, `Agendamento registrado (#${consulta.id}) com ${slot.dataset.profissionalNome} em ${data} às ${hora}.`, "sucesso");
+        await consultarHorarios();
+    } catch (erro) {
+        mensagem(mensagemReserva, erro.message, "erro");
+    } finally {
+        definirCarregamento(false);
+    }
+});

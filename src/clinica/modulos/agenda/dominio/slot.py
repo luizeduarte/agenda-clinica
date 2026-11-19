@@ -20,6 +20,8 @@ class Slot:
 
     def __post_init__(self) -> None:
         """Valida a grade na criação: não existe ``Slot`` fora dela (RN02)."""
+        if self.inicio.utcoffset() is not None or self.fim.utcoffset() is not None:
+            raise SlotInvalidoError("Informe a data e a hora locais, sem fuso horário.")
         if not self.esta_na_grade(self.inicio):
             raise SlotInvalidoError(f"O slot deve começar em :00 ou :30, não em {self.inicio}.")
         if self.fim - self.inicio != DURACAO:
@@ -40,7 +42,14 @@ class Slot:
     @classmethod
     def a_partir_de(cls, inicio: datetime) -> "Slot":
         # Cria um slot de 30 minutos a partir do instante ``inicio``.
-        return cls(inicio, inicio + DURACAO)
+        try:
+            fim = inicio + DURACAO
+        except OverflowError as erro:
+            raise SlotInvalidoError("Não é possível concluir o slot na data informada.") from erro
+        return cls(inicio, fim)
+
+    def esta_no_futuro(self, agora: datetime) -> bool:
+        return self.inicio > agora
 
     def sobrepoe(self, outro: "Slot") -> bool:
         return self.sobrepoe_periodo(outro.inicio, outro.fim)

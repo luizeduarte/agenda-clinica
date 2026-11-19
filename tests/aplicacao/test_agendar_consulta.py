@@ -1,4 +1,5 @@
 from dataclasses import replace
+from datetime import timedelta
 
 import pytest
 
@@ -93,6 +94,15 @@ class TestFluxosAlternativos:
             agendar.executar(comando(minuto=15))
 
         assert banco.consultas == []
+
+    @pytest.mark.parametrize("agora", [dt(10), dt(10, 1), dt(10) + timedelta(days=1)])
+    def test_horario_ja_iniciado_nao_pode_ser_agendado(self, uow, banco, agora):
+        agendar = AgendarConsulta(uow, relogio=lambda: agora)
+
+        with pytest.raises(SlotInvalidoError, match="futuro"):
+            agendar.executar(comando())
+
+        assert banco.consultas == banco.pendentes == []
 
     def test_paciente_ja_tem_consulta_no_mesmo_horario_com_outro_profissional(self, agendar):
         agendar.executar(comando(profissional=10))

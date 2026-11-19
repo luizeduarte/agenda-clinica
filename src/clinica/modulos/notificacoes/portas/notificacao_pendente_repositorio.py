@@ -12,7 +12,11 @@ class NotificacaoPendenteRepositorio(ABC):
 
     @abstractmethod
     def listar_para_envio(self, limite: int = 50) -> list[NotificacaoPendente]:
-        """Pendências em estado ``PENDENTE`` ou ``FALHA`` (candidatas a reenvio)."""
+        """Pendências ``PENDENTE`` ou ``FALHA``, priorizando as menos tentadas."""
+
+    @abstractmethod
+    def obter_por_id(self, pendente_id: int) -> NotificacaoPendente | None:
+        """Estado atual de uma pendência, ou ``None`` se não existir."""
 
     @abstractmethod
     def atualizar(self, pendente: NotificacaoPendente) -> None:

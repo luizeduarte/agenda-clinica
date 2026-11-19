@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Agenda Clínica Universitária</title>
+    <link rel="stylesheet" href="/estaticos/agenda.css">
+    <script src="/estaticos/agenda.js" defer></script>
+</head>
+<body>
+    <header class="cabecalho">
+        <div class="largura">
+            <span>Clínica universitária</span>
+            <a href="/docs">Documentação da API</a>
+        </div>
+    </header>
+    <main class="largura">
+        <h1>Agendar consulta</h1>
+        <p class="aviso">Autenticação simulada para demonstração acadêmica. Todos os dados são fictícios.</p>
+        <noscript><p>Ative o JavaScript para consultar horários e agendar.</p></noscript>
+
+        <div class="paineis">
+            <section class="painel" aria-labelledby="titulo-busca">
+                <h2 id="titulo-busca">Buscar horários</h2>
+                <form id="busca">
+                    <fieldset id="filtros">
+                        <label for="paciente">Paciente</label>
+                        <select id="paciente" required>
+                            <option value="token-ana">Ana</option>
+                            <option value="token-bia">Bia</option>
+                        </select>
+
+                        <label for="filtro">Profissional ou especialidade</label>
+                        <select id="filtro" required>
+                            <optgroup label="Profissionais">
+                                <option value="10" data-parametro="profissional_id">Dr. João</option>
+                                <option value="11" data-parametro="profissional_id">Dra. Marta</option>
+                            </optgroup>
+                            <optgroup label="Especialidades">
+                                <option value="Clínica Geral" data-parametro="especialidade">Clínica Geral</option>
+                                <option value="Odontologia" data-parametro="especialidade">Odontologia</option>
+                            </optgroup>
+                        </select>
+
+                        <label for="dia">Data da consulta</label>
+                        <input id="dia" type="date" required>
+
+                        <button type="submit">Consultar disponibilidade</button>
+                    </fieldset>
+                </form>
+            </section>
+
+            <section class="painel painel-horarios" aria-labelledby="titulo-horarios">
+                <h2 id="titulo-horarios">Horários disponíveis</h2>
+                <p id="mensagem-horarios" class="mensagem" role="status">Consulte a disponibilidade para escolher um horário.</p>
+                <form id="reserva">
+                    <fieldset id="escolha">
+                        <legend class="somente-leitor">Escolha um horário para agendar</legend>
+                        <div id="horarios"></div>
+                        <button id="confirmar" type="submit" disabled>Confirmar agendamento</button>
+                    </fieldset>
+                </form>
+                <p id="mensagem-reserva" class="mensagem" role="status"></p>
+            </section>
+        </div>
+    </main>
+</body>
+</html>

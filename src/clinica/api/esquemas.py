@@ -17,7 +17,7 @@ class ErroResposta(BaseModel):
 class AgendarConsultaPedido(BaseModel):
     profissional_id: int
     inicio: NaiveDatetime = Field(
-        description="Início do horário, sem fuso, em :00 ou :30. Ex.: 2026-12-01T10:00:00"
+        description="Data futura e hora local de início em :00 ou :30, no formato AAAA-MM-DDTHH:MM:SS."
     )
 
 

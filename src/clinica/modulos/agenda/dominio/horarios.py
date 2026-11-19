@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time
 
 from clinica.compartilhado.erros import HorarioDeAtendimentoInvalidoError
-from clinica.modulos.agenda.dominio.slot import DURACAO, Slot
+from clinica.modulos.agenda.dominio.slot import Slot
 
 
 @dataclass(frozen=True)
@@ -34,9 +34,10 @@ class HorarioAtendimento:
         slots = []
         atual = datetime.combine(dia, self.hora_inicio)
         limite = datetime.combine(dia, self.hora_fim)
-        while atual + DURACAO <= limite:
-            slots.append(Slot.a_partir_de(atual))
-            atual += DURACAO
+        while atual < limite:
+            slot = Slot.a_partir_de(atual)
+            slots.append(slot)
+            atual = slot.fim
         return slots
 
 

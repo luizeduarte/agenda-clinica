@@ -9,12 +9,14 @@ from clinica.compartilhado.erros import HorarioIndisponivelError, NaoAutorizadoE
 from clinica.infraestrutura.persistencia import SQLiteUnidadeDeTrabalho, inicializar_banco
 from clinica.infraestrutura.persistencia.conexao import abrir_conexao
 from clinica.infraestrutura.persistencia.dados_exemplo import popular_dados_de_exemplo
+from clinica.modulos.agenda.dominio.slot import Slot
 from clinica.modulos.autenticacao.portas.servico_autenticacao import Papel, Usuario
 from clinica.modulos.consultas.aplicacao.agendar_consulta import (
     AgendarConsulta,
     AgendarConsultaComando,
 )
 from clinica.modulos.consultas.aplicacao.consultar_disponibilidade import ConsultarDisponibilidade
+from clinica.modulos.consultas.dominio.consulta import Consulta
 
 AGORA = datetime(2026, 11, 20, 9, 0)
 TERCA = datetime(2026, 12, 1)
@@ -100,7 +102,7 @@ def test_falha_ao_gravar_a_pendencia_desfaz_a_consulta(caminho):
 def test_disponibilidade_reflete_o_que_foi_agendado(agendar, caminho):
     agendar.executar(AgendarConsultaComando(Usuario(7, Papel.PACIENTE), 10, inicio(8, 30)))
 
-    (resultado,) = ConsultarDisponibilidade(SQLiteUnidadeDeTrabalho(caminho)).executar(
+    (resultado,) = ConsultarDisponibilidade(SQLiteUnidadeDeTrabalho(caminho), lambda: AGORA).executar(
         TERCA.date(), profissional_id=10
     )
 
@@ -115,14 +117,26 @@ def test_disponibilidade_nao_espera_uma_reserva_em_andamento(caminho):
     reserva = abrir_conexao(caminho)
     try:
         reserva.execute("BEGIN IMMEDIATE")  # outra requisição segurando o bloqueio de escrita
-        (resultado,) = ConsultarDisponibilidade(SQLiteUnidadeDeTrabalho(caminho)).executar(
-            TERCA.date(), profissional_id=10
-        )
+        (resultado,) = ConsultarDisponibilidade(
+            SQLiteUnidadeDeTrabalho(caminho), lambda: AGORA
+        ).executar(TERCA.date(), profissional_id=10)
     finally:
         reserva.execute("ROLLBACK")
         reserva.close()
 
     assert len(resultado.slots) == 16
+
+
+def test_consultar_disponibilidade_durante_uma_escrita(caminho):
+    consultar = ConsultarDisponibilidade(SQLiteUnidadeDeTrabalho(caminho), lambda: AGORA)
+    with SQLiteUnidadeDeTrabalho(caminho) as escrita:
+        escrita.consultas.adicionar(Consulta(7, 10, 1, Slot.a_partir_de(inicio(10))))
+        (resultado,) = consultar.executar(TERCA.date(), profissional_id=10)
+        assert inicio(10) in [slot.inicio for slot in resultado.slots]
+        escrita.commit()
+
+    (resultado,) = consultar.executar(TERCA.date(), profissional_id=10)
+    assert inicio(10) not in [slot.inicio for slot in resultado.slots]
 
 
 def _disparar_em_paralelo(tarefas):
@@ -181,6 +195,20 @@ def test_asr01_mesmo_paciente_com_profissionais_diferentes_no_mesmo_horario(cami
     tipos = Counter(type(r).__name__ for r in resultados)
     assert tipos == {"Consulta": 1, "ConflitoDoPacienteError": 1}
     assert len(consultas_ativas(caminho)) == 1
+    assert total(caminho, "notificacao_pendente") == 1
+
+
+def test_asr01_mesmo_paciente_disputa_o_limite_por_especialidade(agendar, caminho):
+    paciente = Usuario(7, Papel.PACIENTE)
+    resultados = _disparar_em_paralelo(
+        [
+            lambda: agendar.executar(AgendarConsultaComando(paciente, 10, inicio(10))),
+            lambda: agendar.executar(AgendarConsultaComando(paciente, 10, inicio(11))),
+        ]
+    )
+
+    assert Counter(type(r).__name__ for r in resultados) == {"Consulta": 1, "LimiteDoPacienteExcedidoError": 1}
+    assert total(caminho, "consulta") == total(caminho, "notificacao_pendente") == 1
 
 
 def test_asr01_horarios_diferentes_nao_se_atrapalham(caminho):

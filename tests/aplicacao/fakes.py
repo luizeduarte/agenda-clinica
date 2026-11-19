@@ -121,10 +121,14 @@ class NotificacaoPendenteRepositorioEmMemoria(NotificacaoPendenteRepositorio):
         return pendente
 
     def listar_para_envio(self, limite=50):
-        return [
+        candidatas = [
             p for p in self._b.pendentes
             if p.estado in (EstadoNotificacao.PENDENTE, EstadoNotificacao.FALHA)
-        ][:limite]
+        ]
+        return sorted(candidatas, key=lambda p: (p.tentativas, p.id))[:limite]
+
+    def obter_por_id(self, pendente_id):
+        return next((p for p in self._b.pendentes if p.id == pendente_id), None)
 
     def atualizar(self, pendente):
         pass

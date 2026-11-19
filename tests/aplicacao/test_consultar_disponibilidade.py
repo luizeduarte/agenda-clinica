@@ -2,7 +2,7 @@ from dataclasses import replace
 
 import pytest
 
-from clinica.compartilhado.erros import EntidadeNaoEncontradaError, FiltroInvalidoError
+from clinica.compartilhado.erros import EntidadeNaoEncontradaError, FiltroDeDisponibilidadeInvalidoError
 from clinica.modulos.autenticacao.portas.servico_autenticacao import Papel, Usuario
 from clinica.modulos.agenda.dominio.horarios import Bloqueio
 from clinica.modulos.consultas.aplicacao.agendar_consulta import (
@@ -16,7 +16,7 @@ from tests.aplicacao.conftest import AGORA, TERCA, dt
 
 @pytest.fixture
 def consultar(uow):
-    return ConsultarDisponibilidade(uow)
+    return ConsultarDisponibilidade(uow, relogio=lambda: AGORA)
 
 
 def inicios(disponibilidade):
@@ -80,6 +80,13 @@ def test_dia_sem_atendimento_nao_tem_slots(consultar):
     assert resultado.slots == []
 
 
+def test_lista_apenas_horarios_com_inicio_futuro(uow):
+    consultar = ConsultarDisponibilidade(uow, relogio=lambda: dt(10))
+    (resultado,) = consultar.executar(TERCA, profissional_id=10)
+
+    assert inicios(resultado) == [dt(10, 30), dt(11), dt(11, 30)]
+
+
 def test_profissional_inexistente(consultar):
     with pytest.raises(EntidadeNaoEncontradaError):
         consultar.executar(TERCA, profissional_id=999)
@@ -87,5 +94,5 @@ def test_profissional_inexistente(consultar):
 
 @pytest.mark.parametrize("filtros", [{}, {"profissional_id": 10, "especialidade": "Odontologia"}])
 def test_exige_exatamente_um_filtro(consultar, filtros):
-    with pytest.raises(FiltroInvalidoError):
+    with pytest.raises(FiltroDeDisponibilidadeInvalidoError):
         consultar.executar(TERCA, **filtros)

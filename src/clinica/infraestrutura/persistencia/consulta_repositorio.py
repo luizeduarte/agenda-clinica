@@ -9,6 +9,10 @@ from clinica.modulos.consultas.dominio.consulta import Consulta, StatusConsulta
 from clinica.modulos.consultas.portas.consulta_repositorio import ConsultaRepositorio
 
 _ATIVAS = "status IN ('AGENDADA', 'CONFIRMADA')"
+_RESTRICOES_DE_RESERVA = {
+    "UNIQUE constraint failed: consulta.profissional_id, consulta.inicio": "profissional",
+    "UNIQUE constraint failed: consulta.paciente_id, consulta.inicio": "paciente",
+}
 
 
 class SQLiteConsultaRepositorio(ConsultaRepositorio):
@@ -30,12 +34,11 @@ class SQLiteConsultaRepositorio(ConsultaRepositorio):
 
     @staticmethod
     def _traduzir(erro: sqlite3.IntegrityError) -> Exception:
-        """Converte a violação de um índice único de reserva em ``ConflitoDePersistenciaError``"""
-        mensagem = str(erro)
-        if "UNIQUE" in mensagem and "consulta.profissional_id" in mensagem:
-            return ConflitoDePersistenciaError("profissional")
-        if "UNIQUE" in mensagem and "consulta.paciente_id" in mensagem:
-            return ConflitoDePersistenciaError("paciente")
+        """Converte a violação de um índice único de reserva em ``ConflitoDePersistenciaError``."""
+        if erro.sqlite_errorcode == sqlite3.SQLITE_CONSTRAINT_UNIQUE:
+            participante = _RESTRICOES_DE_RESERVA.get(str(erro))
+            if participante is not None:
+                return ConflitoDePersistenciaError(participante)
         return erro
 
     def adicionar(self, consulta: Consulta) -> Consulta:

@@ -37,7 +37,7 @@ class SQLiteUnidadeDeTrabalho(UnidadeDeTrabalho):
 
     Sair sem ``commit()``, ou por exceção, desfaz tudo.
 
-    Em ``somente_leitura()`` a transação abre com ``BEGIN`` comum, sem o
+    Em ``leitura()`` a transação abre com ``BEGIN`` comum, sem o
     bloqueio de escrita, e a conexão recusa gravações (``query_only``).
     """
 

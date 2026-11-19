@@ -9,6 +9,7 @@ from clinica.compartilhado.erros import (
     EntidadeNaoEncontradaError,
     HorarioIndisponivelError,
     NaoAutorizadoError,
+    SlotInvalidoError,
 )
 from clinica.modulos.autenticacao.portas.servico_autenticacao import Papel, Usuario
 from clinica.modulos.agenda.dominio.slot import Slot
@@ -45,7 +46,11 @@ class AgendarConsulta:
         if comando.usuario.papel != Papel.PACIENTE:
             raise NaoAutorizadoError("Apenas pacientes podem agendar consultas.")
 
+        # Grade e "no futuro" dependem só do horário pedido e do relógio:
+        # recusa antes de ocupar o bloqueio de escrita (ADR-003).
         slot = Slot.a_partir_de(comando.inicio)
+        if not slot.esta_no_futuro(self._relogio()):
+            raise SlotInvalidoError("O horário da consulta deve estar no futuro.")
 
         # Consulta e notificação pendente só valem juntas, no commit (ver
         # UnidadeDeTrabalho). Qualquer erro antes dele desfaz as duas.

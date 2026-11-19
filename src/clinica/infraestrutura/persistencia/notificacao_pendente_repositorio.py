@@ -54,10 +54,16 @@ class SQLiteNotificacaoPendenteRepositorio(NotificacaoPendenteRepositorio):
     def listar_para_envio(self, limite: int = 50) -> list[NotificacaoPendente]:
         linhas = self._con.execute(
             "SELECT * FROM notificacao_pendente WHERE estado IN ('PENDENTE', 'FALHA')"
-            " ORDER BY id LIMIT ?",
+            " ORDER BY tentativas, id LIMIT ?",
             (limite,),
         )
         return [self._para_pendente(linha) for linha in linhas]
+
+    def obter_por_id(self, pendente_id: int) -> NotificacaoPendente | None:
+        linha = self._con.execute(
+            "SELECT * FROM notificacao_pendente WHERE id = ?", (pendente_id,)
+        ).fetchone()
+        return self._para_pendente(linha) if linha is not None else None
 
     def atualizar(self, pendente: NotificacaoPendente) -> None:
         self._con.execute(

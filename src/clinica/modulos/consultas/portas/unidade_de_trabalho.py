@@ -56,8 +56,8 @@ class UnidadeDeTrabalho(ABC):
         self._encerrar()
 
     @contextmanager
-    def somente_leitura(self) -> Iterator[Self]:
-        """Bloco só de leitura: ``with uow.somente_leitura() as uow:``.
+    def leitura(self) -> Iterator[Self]:
+        """Bloco só de leitura: ``with uow.leitura() as uow:``.
 
         Não toma o bloqueio de escrita, então não atrasa as reservas (ADR-003),
         e recusa gravações. Usado por consultas como ``ConsultarDisponibilidade``.

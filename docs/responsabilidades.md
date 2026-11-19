@@ -208,7 +208,7 @@ Esse custo é justificado pela necessidade de testar regras de negócio isoladam
 O principal caso de uso seguirá conceitualmente as seguintes etapas:
 
 1. O `AgendamentoController` recebe a solicitação HTTP, valida os parâmetros de entrada e obtém o contexto autenticado (quando aplicável via `ServicoAutenticacao`).
-2. O caso de uso `AgendarConsulta` cria o `Slot` do horário solicitado, que valida a duração e o alinhamento à grade. Essa validação depende apenas do horário pedido, por isso ocorre antes de abrir a transação. Assim, um horário fora da grade é recusado sem ocupar o bloqueio de escrita do banco.
+2. O caso de uso `AgendarConsulta` cria o `Slot` do horário solicitado, que valida a duração e o alinhamento à grade, e recusa o horário se ele já tiver começado (RN09). Essas validações dependem apenas do horário pedido e do relógio, por isso ocorrem antes de abrir a transação. Assim, um horário fora da grade ou no passado é recusado sem ocupar o bloqueio de escrita do banco.
 3. `AgendarConsulta` inicia a `UnidadeDeTrabalho` (abrindo a transação de escrita no banco), recupera os dados necessários por meio de `AgendaRepositorio`, `ConsultaRepositorio`, `PacienteRepositorio` e `ProfissionalRepositorio`, e o domínio valida a operação:
    - `AgendaProfissional` avalia a disponibilidade do profissional (período de atendimento em `HorarioAtendimento`, ausência de `Bloqueio` e ausência de conflito com consultas ativas).
    - `AgendaPaciente` verifica se o paciente não possui outra consulta ativa sobreposta no período e se respeita o limite de agendamentos ativos.

@@ -66,7 +66,13 @@ class NotificacaoPendente:
         self.ultimo_erro = None
 
     def registrar_falha(self, erro: str) -> None:
-        """Registra uma tentativa frustrada mantendo a pendência elegível para reenvio."""
+        """Registra uma tentativa frustrada mantendo a pendência elegível para reenvio.
+
+        Se outra execução já a tinha enviado, conta a tentativa mas continua
+        ``ENVIADA``: voltar para ``FALHA`` faria a mensagem ser enviada de novo.
+        """
         self.tentativas += 1
+        if self.estado == EstadoNotificacao.ENVIADA:
+            return
         self.estado = EstadoNotificacao.FALHA
         self.ultimo_erro = erro

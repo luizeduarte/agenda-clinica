@@ -33,6 +33,6 @@ def criar_aplicacao(
 
     return criar_app(
         agendar_consulta=AgendarConsulta(uow, relogio=relogio),
-        consultar_disponibilidade=ConsultarDisponibilidade(uow),
+        consultar_disponibilidade=ConsultarDisponibilidade(uow, relogio=relogio),
         autenticacao=autenticacao,
     )
