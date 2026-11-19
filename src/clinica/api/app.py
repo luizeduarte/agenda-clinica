@@ -6,9 +6,8 @@ from fastapi.staticfiles import StaticFiles
 
 from clinica.api.controllers.agendamento_controller import AgendamentoController
 from clinica.api.erros import registrar_tratadores
-from clinica.modulos.autenticacao.portas.servico_autenticacao import ServicoAutenticacao
+from clinica.modulos.agenda.aplicacao.consultar_disponibilidade import ConsultarDisponibilidade
 from clinica.modulos.consultas.aplicacao.agendar_consulta import AgendarConsulta
-from clinica.modulos.consultas.aplicacao.consultar_disponibilidade import ConsultarDisponibilidade
 
 DEMONSTRACAO = Path(__file__).with_name("demonstracao")
 
@@ -16,7 +15,6 @@ DEMONSTRACAO = Path(__file__).with_name("demonstracao")
 def criar_app(
     agendar_consulta: AgendarConsulta,
     consultar_disponibilidade: ConsultarDisponibilidade,
-    autenticacao: ServicoAutenticacao,
 ) -> FastAPI:
     """Monta a aplicação web a partir dos casos de uso já criados.
     """
@@ -29,7 +27,7 @@ def criar_app(
         version="0.1.0",
     )
     app.include_router(
-        AgendamentoController(agendar_consulta, consultar_disponibilidade, autenticacao).criar_rotas()
+        AgendamentoController(agendar_consulta, consultar_disponibilidade).criar_rotas()
     )
     app.mount("/estaticos", StaticFiles(directory=DEMONSTRACAO / "estaticos"))
 

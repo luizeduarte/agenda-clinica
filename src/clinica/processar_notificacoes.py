@@ -1,11 +1,12 @@
 """Executa um lote de notificações no banco do protótipo."""
 import argparse
 import os
-from contextlib import contextmanager
 from pathlib import Path
 
 from clinica.infraestrutura.notificacoes.notificador_fake import NotificadorFake
-from clinica.infraestrutura.persistencia import SQLiteUnidadeDeTrabalho
+from clinica.infraestrutura.persistencia.notificacao_pendente_repositorio import (
+    SQLiteNotificacaoPendenteRepositorio,
+)
 from clinica.modulos.notificacoes.aplicacao.processador_de_notificacoes import (
     LIMITE_PADRAO,
     ProcessadorDeNotificacoes,
@@ -14,20 +15,7 @@ from clinica.modulos.notificacoes.portas.notificador import Notificador
 
 
 def criar_processador(caminho: str | Path, notificador: Notificador) -> ProcessadorDeNotificacoes:
-    uow = SQLiteUnidadeDeTrabalho(caminho)
-
-    @contextmanager
-    def ler():
-        with uow.leitura():
-            yield uow.notificacoes_pendentes
-
-    @contextmanager
-    def gravar():
-        with uow:
-            yield uow.notificacoes_pendentes
-            uow.commit()
-
-    return ProcessadorDeNotificacoes(notificador, ler, gravar)
+    return ProcessadorDeNotificacoes(notificador, SQLiteNotificacaoPendenteRepositorio(caminho))
 
 
 def main() -> None:

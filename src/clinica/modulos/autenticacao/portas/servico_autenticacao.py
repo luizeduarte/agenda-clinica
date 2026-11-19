@@ -1,17 +1,6 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from enum import Enum
 
-
-class Papel(str, Enum):
-    PACIENTE = "PACIENTE"
-    PROFISSIONAL = "PROFISSIONAL"  # inclui estagiários
-
-
-@dataclass(frozen=True)
-class Usuario:
-    id: int
-    papel: Papel
+from clinica.modulos.autenticacao.dominio.usuario import Papel, Usuario
 
 
 class ServicoAutenticacao(ABC):
@@ -24,3 +13,6 @@ class ServicoAutenticacao(ABC):
         Raises:
             NaoAutenticadoError: credencial desconhecida ou inválida.
         """
+
+
+__all__ = ["Papel", "ServicoAutenticacao", "Usuario"]

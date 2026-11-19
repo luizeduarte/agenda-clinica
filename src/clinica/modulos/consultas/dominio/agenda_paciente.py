@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from datetime import datetime
 
 from clinica.compartilhado.erros import ConflitoDoPacienteError, LimiteDoPacienteExcedidoError
-from clinica.modulos.agenda.dominio.slot import Slot
+from clinica.modulos.agenda.contratos import Slot
 from clinica.modulos.consultas.dominio.consulta import Consulta
 
 MAX_ATIVAS_NO_DIA = 2

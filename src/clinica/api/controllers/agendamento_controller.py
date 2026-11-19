@@ -5,7 +5,7 @@ JSON em comando, chama o caso de uso e devolve a resposta. Os erros do núcleo
 são traduzidos para HTTP em ``api/erros.py``.
 
 As rotas são funções comuns (``def``), que o FastAPI executa em um pool de
-threads. A ``UnidadeDeTrabalho`` guarda a conexão por thread, então cada
+threads. A ``ConexaoSQLite`` guarda a conexão por thread, então cada
 requisição tem a sua transação.
 """
 from datetime import date
@@ -25,13 +25,13 @@ from clinica.api.esquemas import (
     ConsultaResposta,
     DisponibilidadeResposta,
 )
-from clinica.compartilhado.erros import NaoAutenticadoError
-from clinica.modulos.autenticacao.portas.servico_autenticacao import ServicoAutenticacao, Usuario
+from clinica.modulos.agenda.aplicacao.consultar_disponibilidade import ConsultarDisponibilidade
+from clinica.modulos.autenticacao.contratos import Autenticacao
+from clinica.modulos.autenticacao.dominio import Usuario
 from clinica.modulos.consultas.aplicacao.agendar_consulta import (
     AgendarConsulta,
     AgendarConsultaComando,
 )
-from clinica.modulos.consultas.aplicacao.consultar_disponibilidade import ConsultarDisponibilidade
 
 
 class AgendamentoController:
@@ -39,18 +39,13 @@ class AgendamentoController:
         self,
         agendar_consulta: AgendarConsulta,
         consultar_disponibilidade: ConsultarDisponibilidade,
-        autenticacao: ServicoAutenticacao,
     ) -> None:
         self._agendar_consulta = agendar_consulta
         self._consultar_disponibilidade = consultar_disponibilidade
-        self._autenticacao = autenticacao
 
     def _identificar(self, authorization: str | None) -> Usuario:
-        """Lê ``Authorization: Bearer <token>`` e pergunta ao serviço de autenticação."""
-        esquema, _, token = (authorization or "").partition(" ")
-        if esquema.lower() != "bearer" or not token.strip():
-            raise NaoAutenticadoError("Informe o cabeçalho 'Authorization: Bearer <token>'.")
-        return self._autenticacao.identificar(token.strip())
+        """Lê ``Authorization: Bearer <token>`` e identifica o usuário pelo contrato de autenticação."""
+        return Autenticacao.identificar_por_cabecalho(authorization)
 
     def consultar_disponibilidade(
         self,

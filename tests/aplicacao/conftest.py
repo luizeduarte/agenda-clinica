@@ -2,9 +2,19 @@ from datetime import date, datetime, time
 
 import pytest
 
+from clinica.modulos.agenda.contratos import Agenda
 from clinica.modulos.agenda.dominio.horarios import HorarioAtendimento
-from clinica.modulos.cadastros.dominio.cadastros import Especialidade, Paciente, Profissional
-from tests.aplicacao.fakes import BancoEmMemoria, UnidadeDeTrabalhoEmMemoria
+from clinica.modulos.cadastros.contratos import Cadastros, Especialidade, Paciente, Profissional
+from clinica.modulos.consultas.contratos import Consultas
+from clinica.modulos.notificacoes.contratos import Notificacoes
+from tests.aplicacao.fakes import (
+    AgendaRepositorioEmMemoria,
+    BancoEmMemoria,
+    ConsultaRepositorioEmMemoria,
+    NotificacaoPendenteRepositorioEmMemoria,
+    PacienteRepositorioEmMemoria,
+    ProfissionalRepositorioEmMemoria,
+)
 
 TERCA = date(2026, 12, 1)
 AGORA = datetime(2026, 11, 20, 9, 0)
@@ -34,9 +44,11 @@ def banco():
         10: [HorarioAtendimento(1, time(8, 0), time(12, 0))],
         11: [HorarioAtendimento(1, time(8, 0), time(12, 0))],
     }
+    Agenda.configurar(AgendaRepositorioEmMemoria(b))
+    Cadastros.configurar(
+        PacienteRepositorioEmMemoria(b),
+        ProfissionalRepositorioEmMemoria(b),
+    )
+    Consultas.configurar(ConsultaRepositorioEmMemoria(b))
+    Notificacoes.configurar(NotificacaoPendenteRepositorioEmMemoria(b))
     return b
-
-
-@pytest.fixture
-def uow(banco):
-    return UnidadeDeTrabalhoEmMemoria(banco)

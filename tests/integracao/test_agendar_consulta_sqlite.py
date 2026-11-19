@@ -5,18 +5,31 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from clinica.compartilhado.erros import HorarioIndisponivelError, NaoAutorizadoError, SlotInvalidoError
-from clinica.infraestrutura.persistencia import SQLiteUnidadeDeTrabalho, inicializar_banco
-from clinica.infraestrutura.persistencia.conexao import abrir_conexao
-from clinica.infraestrutura.persistencia.dados_exemplo import popular_dados_de_exemplo
-from clinica.modulos.agenda.dominio.slot import Slot
-from clinica.modulos.autenticacao.portas.servico_autenticacao import Papel, Usuario
-from clinica.modulos.consultas.aplicacao.agendar_consulta import (
-    AgendarConsulta,
-    AgendarConsultaComando,
+from clinica.compartilhado.erros import (
+    HorarioIndisponivelError,
+    NaoAutorizadoError,
+    SlotInvalidoError,
 )
-from clinica.modulos.consultas.aplicacao.consultar_disponibilidade import ConsultarDisponibilidade
+from clinica.infraestrutura.persistencia import ConexaoSQLite, inicializar_banco
+from clinica.infraestrutura.persistencia.agenda_repositorio import SQLiteAgendaRepositorio
+from clinica.infraestrutura.persistencia.cadastros_repositorios import (
+    SQLitePacienteRepositorio,
+    SQLiteProfissionalRepositorio,
+)
+from clinica.infraestrutura.persistencia.conexao import abrir_conexao
+from clinica.infraestrutura.persistencia.consulta_repositorio import SQLiteConsultaRepositorio
+from clinica.infraestrutura.persistencia.dados_exemplo import popular_dados_de_exemplo
+from clinica.infraestrutura.persistencia.notificacao_pendente_repositorio import (
+    SQLiteNotificacaoPendenteRepositorio,
+)
+from clinica.modulos.agenda.aplicacao import ConsultarDisponibilidade
+from clinica.modulos.agenda.contratos import Agenda, Slot
+from clinica.modulos.autenticacao.contratos import Papel, Usuario
+from clinica.modulos.cadastros.contratos import Cadastros
+from clinica.modulos.consultas.aplicacao import AgendarConsulta, AgendarConsultaComando
+from clinica.modulos.consultas.contratos import Consultas
 from clinica.modulos.consultas.dominio.consulta import Consulta
+from clinica.modulos.notificacoes.contratos import Notificacoes
 
 AGORA = datetime(2026, 11, 20, 9, 0)
 TERCA = datetime(2026, 12, 1)
@@ -24,6 +37,19 @@ TERCA = datetime(2026, 12, 1)
 
 def inicio(hora, minuto=0):
     return datetime(2026, 12, 1, hora, minuto)
+
+
+def configurar_sqlite(caminho, pendentes_repo=None) -> tuple[ConexaoSQLite, SQLiteConsultaRepositorio]:
+    banco = ConexaoSQLite(caminho)
+    consultas_repo = SQLiteConsultaRepositorio(banco)
+    Agenda.configurar(SQLiteAgendaRepositorio(banco))
+    Cadastros.configurar(
+        SQLitePacienteRepositorio(banco),
+        SQLiteProfissionalRepositorio(banco),
+    )
+    Consultas.configurar(consultas_repo)
+    Notificacoes.configurar(pendentes_repo or SQLiteNotificacaoPendenteRepositorio(banco))
+    return banco, consultas_repo
 
 
 @pytest.fixture
@@ -36,7 +62,8 @@ def caminho(tmp_path):
 
 @pytest.fixture
 def agendar(caminho):
-    return AgendarConsulta(SQLiteUnidadeDeTrabalho(caminho), relogio=lambda: AGORA)
+    _, consultas_repo = configurar_sqlite(caminho)
+    return AgendarConsulta(consultas_repo, relogio=lambda: AGORA)
 
 
 def consultas_ativas(caminho):
@@ -68,6 +95,7 @@ def test_agenda_persiste_consulta_e_notificacao(agendar, caminho):
 
 @pytest.mark.parametrize("segundos_apos_inicio", [-1, 0, 1])
 def test_revalida_horario_apos_obter_bloqueio_de_escrita(caminho, segundos_apos_inicio):
+    _, consultas_repo = configurar_sqlite(caminho)
     horario = inicio(10)
     instante = [horario - timedelta(seconds=2)]
     validou = threading.Event()
@@ -80,7 +108,7 @@ def test_revalida_horario_apos_obter_bloqueio_de_escrita(caminho, segundos_apos_
 
     def executar():
         try:
-            agendar = AgendarConsulta(SQLiteUnidadeDeTrabalho(caminho), relogio=relogio)
+            agendar = AgendarConsulta(consultas_repo, relogio=relogio)
             resultados.append(
                 agendar.executar(AgendarConsultaComando(Usuario(7, Papel.PACIENTE), 10, horario))
             )
@@ -93,8 +121,6 @@ def test_revalida_horario_apos_obter_bloqueio_de_escrita(caminho, segundos_apos_
     thread.start()
     try:
         assert validou.wait(timeout=5), "O pedido não chegou à validação inicial."
-        # O pedido passou pela primeira validação, mas ainda não pôde obter
-        # o bloqueio. Avança o relógio antes de liberar a outra transação.
         instante[0] = horario + timedelta(seconds=segundos_apos_inicio)
     finally:
         reserva.execute("ROLLBACK")
@@ -122,21 +148,14 @@ def test_horario_ocupado_nao_grava_nada_alem_da_primeira(agendar, caminho):
 
 
 def test_falha_ao_gravar_a_pendencia_desfaz_a_consulta(caminho):
-    class UnidadeComDefeito(SQLiteUnidadeDeTrabalho):
-        """Delega à unidade real, mas a gravação da pendência falha."""
+    class PendentesComDefeito(SQLiteNotificacaoPendenteRepositorio):
+        """Simula falha ao gravar a notificação pendente."""
 
-        @property
-        def notificacoes_pendentes(self):
-            super().notificacoes_pendentes
+        def adicionar(self, pendente):
+            raise RuntimeError("banco indisponível")
 
-            class Falha:
-                @staticmethod
-                def adicionar(_pendente):
-                    raise RuntimeError("banco indisponível")
-
-            return Falha()
-
-    agendar = AgendarConsulta(UnidadeComDefeito(caminho), relogio=lambda: AGORA)
+    _, consultas_repo = configurar_sqlite(caminho, pendentes_repo=PendentesComDefeito(caminho))
+    agendar = AgendarConsulta(consultas_repo, relogio=lambda: AGORA)
 
     with pytest.raises(RuntimeError):
         agendar.executar(AgendarConsultaComando(Usuario(7, Papel.PACIENTE), 10, inicio(10)))
@@ -147,7 +166,7 @@ def test_falha_ao_gravar_a_pendencia_desfaz_a_consulta(caminho):
 def test_disponibilidade_reflete_o_que_foi_agendado(agendar, caminho):
     agendar.executar(AgendarConsultaComando(Usuario(7, Papel.PACIENTE), 10, inicio(8, 30)))
 
-    (resultado,) = ConsultarDisponibilidade(SQLiteUnidadeDeTrabalho(caminho), lambda: AGORA).executar(
+    (resultado,) = ConsultarDisponibilidade(relogio=lambda: AGORA).executar(
         TERCA.date(), profissional_id=10
     )
 
@@ -159,12 +178,13 @@ def test_disponibilidade_reflete_o_que_foi_agendado(agendar, caminho):
 
 def test_disponibilidade_nao_espera_uma_reserva_em_andamento(caminho):
     """A consulta de disponibilidade só lê: não disputa o bloqueio de escrita (ADR-003)."""
+    configurar_sqlite(caminho)
     reserva = abrir_conexao(caminho)
     try:
         reserva.execute("BEGIN IMMEDIATE")  # outra requisição segurando o bloqueio de escrita
-        (resultado,) = ConsultarDisponibilidade(
-            SQLiteUnidadeDeTrabalho(caminho), lambda: AGORA
-        ).executar(TERCA.date(), profissional_id=10)
+        (resultado,) = ConsultarDisponibilidade(relogio=lambda: AGORA).executar(
+            TERCA.date(), profissional_id=10
+        )
     finally:
         reserva.execute("ROLLBACK")
         reserva.close()
@@ -173,12 +193,14 @@ def test_disponibilidade_nao_espera_uma_reserva_em_andamento(caminho):
 
 
 def test_consultar_disponibilidade_durante_uma_escrita(caminho):
-    consultar = ConsultarDisponibilidade(SQLiteUnidadeDeTrabalho(caminho), lambda: AGORA)
-    with SQLiteUnidadeDeTrabalho(caminho) as escrita:
-        escrita.consultas.adicionar(Consulta(7, 10, 1, Slot.a_partir_de(inicio(10))))
+    configurar_sqlite(caminho)
+    consultar = ConsultarDisponibilidade(relogio=lambda: AGORA)
+    banco_escrita = ConexaoSQLite(caminho)
+    consultas_escrita = SQLiteConsultaRepositorio(banco_escrita)
+    with banco_escrita.transacao():
+        consultas_escrita.adicionar(Consulta(7, 10, 1, Slot.a_partir_de(inicio(10))))
         (resultado,) = consultar.executar(TERCA.date(), profissional_id=10)
         assert inicio(10) in [slot.inicio for slot in resultado.slots]
-        escrita.commit()
 
     (resultado,) = consultar.executar(TERCA.date(), profissional_id=10)
     assert inicio(10) not in [slot.inicio for slot in resultado.slots]
@@ -211,7 +233,8 @@ def test_asr01_pacientes_diferentes_disputam_o_mesmo_horario(caminho):
         "INSERT INTO paciente VALUES (?, ?, ?)", [(20 + i, f"P{i}", f"p{i}@x") for i in range(8)]
     )
     con.close()
-    agendar = AgendarConsulta(SQLiteUnidadeDeTrabalho(caminho), relogio=lambda: AGORA)
+    _, consultas_repo = configurar_sqlite(caminho)
+    agendar = AgendarConsulta(consultas_repo, relogio=lambda: AGORA)
 
     resultados = _disparar_em_paralelo(
         [
@@ -228,7 +251,8 @@ def test_asr01_pacientes_diferentes_disputam_o_mesmo_horario(caminho):
 
 def test_asr01_mesmo_paciente_com_profissionais_diferentes_no_mesmo_horario(caminho):
     """O paciente não pode ficar em dois lugares ao mesmo tempo (RN03)."""
-    agendar = AgendarConsulta(SQLiteUnidadeDeTrabalho(caminho), relogio=lambda: AGORA)
+    _, consultas_repo = configurar_sqlite(caminho)
+    agendar = AgendarConsulta(consultas_repo, relogio=lambda: AGORA)
 
     resultados = _disparar_em_paralelo(
         [
@@ -257,7 +281,8 @@ def test_asr01_mesmo_paciente_disputa_o_limite_por_especialidade(agendar, caminh
 
 
 def test_asr01_horarios_diferentes_nao_se_atrapalham(caminho):
-    agendar = AgendarConsulta(SQLiteUnidadeDeTrabalho(caminho), relogio=lambda: AGORA)
+    _, consultas_repo = configurar_sqlite(caminho)
+    agendar = AgendarConsulta(consultas_repo, relogio=lambda: AGORA)
 
     resultados = _disparar_em_paralelo(
         [

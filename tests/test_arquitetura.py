@@ -12,7 +12,7 @@ from pathlib import Path
 import clinica
 
 RAIZ = Path(clinica.__file__).parent
-CAMADAS_INTERNAS = {"dominio", "aplicacao", "portas"}
+CAMADAS_INTERNAS = {"dominio", "aplicacao", "portas", "contratos"}
 PROIBIDOS = ("clinica.infraestrutura", "clinica.api", "sqlite3", "fastapi", "uvicorn")
 
 
@@ -41,12 +41,13 @@ def test_camadas_internas_nao_dependem_de_infraestrutura_nem_de_tecnologia():
 
 
 def test_agenda_nao_depende_de_consultas():
-    """`consultas` usa `Slot` de `agenda`; o inverso criaria um ciclo."""
+    """`agenda` só pode enxergar os contratos públicos de `consultas`, nunca domínio, aplicação ou portas."""
     violacoes = [
         f"{caminho.relative_to(RAIZ)} importa {nome}"
         for caminho in (RAIZ / "modulos" / "agenda").rglob("*.py")
         for nome in _imports(caminho)
         if nome.startswith("clinica.modulos.consultas")
+        and not nome.startswith("clinica.modulos.consultas.contratos")
     ]
     assert not violacoes, "\n".join(violacoes)
 

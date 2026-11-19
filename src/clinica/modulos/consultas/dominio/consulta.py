@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 from enum import Enum
 
-from clinica.modulos.agenda.dominio.slot import Slot
+from clinica.modulos.agenda.contratos import Slot
 
 
 class StatusConsulta(str, Enum):

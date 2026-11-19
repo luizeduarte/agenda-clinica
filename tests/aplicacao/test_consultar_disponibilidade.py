@@ -2,21 +2,22 @@ from dataclasses import replace
 
 import pytest
 
-from clinica.compartilhado.erros import EntidadeNaoEncontradaError, FiltroDeDisponibilidadeInvalidoError
-from clinica.modulos.autenticacao.portas.servico_autenticacao import Papel, Usuario
-from clinica.modulos.agenda.dominio.horarios import Bloqueio
-from clinica.modulos.consultas.aplicacao.agendar_consulta import (
-    AgendarConsulta,
-    AgendarConsultaComando,
+from clinica.compartilhado.erros import (
+    EntidadeNaoEncontradaError,
+    FiltroDeDisponibilidadeInvalidoError,
 )
-from clinica.modulos.consultas.aplicacao.consultar_disponibilidade import ConsultarDisponibilidade
+from clinica.modulos.agenda.aplicacao import ConsultarDisponibilidade
+from clinica.modulos.agenda.dominio.horarios import Bloqueio
+from clinica.modulos.autenticacao.contratos import Papel, Usuario
+from clinica.modulos.consultas.aplicacao import AgendarConsulta, AgendarConsultaComando
 from clinica.modulos.consultas.dominio.consulta import StatusConsulta
 from tests.aplicacao.conftest import AGORA, TERCA, dt
+from tests.aplicacao.fakes import ConsultaRepositorioEmMemoria
 
 
 @pytest.fixture
-def consultar(uow):
-    return ConsultarDisponibilidade(uow, relogio=lambda: AGORA)
+def consultar(banco):
+    return ConsultarDisponibilidade(relogio=lambda: AGORA)
 
 
 def inicios(disponibilidade):
@@ -32,8 +33,8 @@ def test_por_profissional_lista_todos_os_slots_do_dia(consultar):
     assert inicios(resultado)[-1] == dt(11, 30)
 
 
-def test_desconta_consultas_ativas_e_bloqueios(consultar, uow, banco):
-    AgendarConsulta(uow, relogio=lambda: AGORA).executar(
+def test_desconta_consultas_ativas_e_bloqueios(consultar, banco):
+    AgendarConsulta(ConsultaRepositorioEmMemoria(banco), relogio=lambda: AGORA).executar(
         AgendarConsultaComando(Usuario(7, Papel.PACIENTE), 10, dt(8, 30))
     )
     banco.bloqueios.append((10, Bloqueio(dt(9, 0), dt(10, 0), "reunião")))
@@ -43,8 +44,8 @@ def test_desconta_consultas_ativas_e_bloqueios(consultar, uow, banco):
     assert inicios(resultado) == [dt(8, 0), dt(10, 0), dt(10, 30), dt(11, 0), dt(11, 30)]
 
 
-def test_consulta_cancelada_libera_o_slot(consultar, uow, banco):
-    AgendarConsulta(uow, relogio=lambda: AGORA).executar(
+def test_consulta_cancelada_libera_o_slot(consultar, banco):
+    AgendarConsulta(ConsultaRepositorioEmMemoria(banco), relogio=lambda: AGORA).executar(
         AgendarConsultaComando(Usuario(7, Papel.PACIENTE), 10, dt(8, 30))
     )
     # O cancelamento em si está fora do recorte: simula a consulta já cancelada no banco.
@@ -62,8 +63,8 @@ def test_por_especialidade_traz_so_os_profissionais_dela(consultar):
     assert len(resultado[0].slots) == 8
 
 
-def test_ocupacao_de_um_profissional_nao_afeta_o_outro(consultar, uow):
-    AgendarConsulta(uow, relogio=lambda: AGORA).executar(
+def test_ocupacao_de_um_profissional_nao_afeta_o_outro(consultar, banco):
+    AgendarConsulta(ConsultaRepositorioEmMemoria(banco), relogio=lambda: AGORA).executar(
         AgendarConsultaComando(Usuario(7, Papel.PACIENTE), 10, dt(8, 0))
     )
 
@@ -80,8 +81,8 @@ def test_dia_sem_atendimento_nao_tem_slots(consultar):
     assert resultado.slots == []
 
 
-def test_lista_apenas_horarios_com_inicio_futuro(uow):
-    consultar = ConsultarDisponibilidade(uow, relogio=lambda: dt(10))
+def test_lista_apenas_horarios_com_inicio_futuro(banco):
+    consultar = ConsultarDisponibilidade(relogio=lambda: dt(10))
     (resultado,) = consultar.executar(TERCA, profissional_id=10)
 
     assert inicios(resultado) == [dt(10, 30), dt(11), dt(11, 30)]

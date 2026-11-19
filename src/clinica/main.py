@@ -14,10 +14,24 @@ from fastapi import FastAPI
 
 from clinica.api.app import criar_app
 from clinica.infraestrutura.autenticacao.servico_autenticacao_fake import ServicoAutenticacaoFake
-from clinica.infraestrutura.persistencia import SQLiteUnidadeDeTrabalho, inicializar_banco
+from clinica.infraestrutura.persistencia import ConexaoSQLite, inicializar_banco
+from clinica.infraestrutura.persistencia.agenda_repositorio import SQLiteAgendaRepositorio
+from clinica.infraestrutura.persistencia.cadastros_repositorios import (
+    SQLitePacienteRepositorio,
+    SQLiteProfissionalRepositorio,
+)
+from clinica.infraestrutura.persistencia.consulta_repositorio import SQLiteConsultaRepositorio
 from clinica.infraestrutura.persistencia.dados_exemplo import popular_dados_de_exemplo
-from clinica.modulos.consultas.aplicacao.agendar_consulta import AgendarConsulta
-from clinica.modulos.consultas.aplicacao.consultar_disponibilidade import ConsultarDisponibilidade
+from clinica.infraestrutura.persistencia.notificacao_pendente_repositorio import (
+    SQLiteNotificacaoPendenteRepositorio,
+)
+from clinica.modulos.agenda.aplicacao import ConsultarDisponibilidade
+from clinica.modulos.agenda.contratos import Agenda
+from clinica.modulos.autenticacao.contratos import Autenticacao
+from clinica.modulos.cadastros.contratos import Cadastros
+from clinica.modulos.consultas.aplicacao import AgendarConsulta
+from clinica.modulos.consultas.contratos import Consultas
+from clinica.modulos.notificacoes.contratos import Notificacoes
 
 
 def criar_aplicacao(
@@ -28,11 +42,21 @@ def criar_aplicacao(
     inicializar_banco(caminho)
     popular_dados_de_exemplo(caminho)  # só para o protótipo: cadastros e horários de demonstração
 
-    uow = SQLiteUnidadeDeTrabalho(caminho)
+    banco = ConexaoSQLite(caminho)
+    consultas_repo = SQLiteConsultaRepositorio(banco)
+    agendas_repo = SQLiteAgendaRepositorio(banco)
+    pacientes_repo = SQLitePacienteRepositorio(banco)
+    profissionais_repo = SQLiteProfissionalRepositorio(banco)
+    pendentes_repo = SQLiteNotificacaoPendenteRepositorio(banco)
     autenticacao = ServicoAutenticacaoFake()
 
+    Agenda.configurar(agendas_repo)
+    Cadastros.configurar(pacientes_repo, profissionais_repo)
+    Consultas.configurar(consultas_repo)
+    Notificacoes.configurar(pendentes_repo)
+    Autenticacao.configurar(autenticacao)
+
     return criar_app(
-        agendar_consulta=AgendarConsulta(uow, relogio=relogio),
-        consultar_disponibilidade=ConsultarDisponibilidade(uow, relogio=relogio),
-        autenticacao=autenticacao,
+        agendar_consulta=AgendarConsulta(consultas_repo, relogio=relogio),
+        consultar_disponibilidade=ConsultarDisponibilidade(relogio=relogio),
     )

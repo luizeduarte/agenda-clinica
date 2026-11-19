@@ -9,11 +9,24 @@ import pytest
 
 from clinica.compartilhado.erros import FalhaNoEnvioError
 from clinica.infraestrutura.notificacoes.notificador_fake import NotificadorFake
-from clinica.infraestrutura.persistencia import SQLiteUnidadeDeTrabalho, inicializar_banco
+from clinica.infraestrutura.persistencia import ConexaoSQLite, inicializar_banco
+from clinica.infraestrutura.persistencia.agenda_repositorio import SQLiteAgendaRepositorio
+from clinica.infraestrutura.persistencia.cadastros_repositorios import (
+    SQLitePacienteRepositorio,
+    SQLiteProfissionalRepositorio,
+)
 from clinica.infraestrutura.persistencia.conexao import abrir_conexao
+from clinica.infraestrutura.persistencia.consulta_repositorio import SQLiteConsultaRepositorio
 from clinica.infraestrutura.persistencia.dados_exemplo import popular_dados_de_exemplo
-from clinica.modulos.autenticacao.portas.servico_autenticacao import Papel, Usuario
-from clinica.modulos.consultas.aplicacao.agendar_consulta import AgendarConsulta, AgendarConsultaComando
+from clinica.infraestrutura.persistencia.notificacao_pendente_repositorio import (
+    SQLiteNotificacaoPendenteRepositorio,
+)
+from clinica.modulos.agenda.contratos import Agenda
+from clinica.modulos.autenticacao.contratos import Papel, Usuario
+from clinica.modulos.cadastros.contratos import Cadastros
+from clinica.modulos.consultas.aplicacao import AgendarConsulta, AgendarConsultaComando
+from clinica.modulos.consultas.contratos import Consultas
+from clinica.modulos.notificacoes.contratos import Notificacoes
 from clinica.processar_notificacoes import criar_processador
 
 
@@ -26,7 +39,16 @@ def caminho(tmp_path):
 
 
 def registrar_consulta(caminho, paciente_id=7, hora=10):
-    agendar = AgendarConsulta(SQLiteUnidadeDeTrabalho(caminho), lambda: datetime(2026, 11, 20))
+    banco = ConexaoSQLite(caminho)
+    consultas_repo = SQLiteConsultaRepositorio(banco)
+    Agenda.configurar(SQLiteAgendaRepositorio(banco))
+    Cadastros.configurar(
+        SQLitePacienteRepositorio(banco),
+        SQLiteProfissionalRepositorio(banco),
+    )
+    Consultas.configurar(consultas_repo)
+    Notificacoes.configurar(SQLiteNotificacaoPendenteRepositorio(banco))
+    agendar = AgendarConsulta(consultas_repo, lambda: datetime(2026, 11, 20))
     return agendar.executar(
         AgendarConsultaComando(Usuario(paciente_id, Papel.PACIENTE), 10, datetime(2026, 12, 1, hora))
     )

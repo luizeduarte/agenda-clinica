@@ -6,20 +6,17 @@ from datetime import datetime
 from clinica.compartilhado.erros import (
     ConflitoDePersistenciaError,
     ConflitoDoPacienteError,
-    EntidadeNaoEncontradaError,
     HorarioIndisponivelError,
     NaoAutorizadoError,
     SlotInvalidoError,
 )
-from clinica.modulos.autenticacao.portas.servico_autenticacao import Papel, Usuario
-from clinica.modulos.agenda.dominio.slot import Slot
-from clinica.modulos.consultas.aplicacao.agenda_do_profissional import (
-    carregar_agenda_do_profissional,
-)
+from clinica.modulos.agenda.contratos import Agenda, Slot
+from clinica.modulos.autenticacao.contratos import Papel, Usuario
+from clinica.modulos.cadastros.contratos import Cadastros
 from clinica.modulos.consultas.dominio.agenda_paciente import AgendaPaciente
 from clinica.modulos.consultas.dominio.consulta import Consulta
-from clinica.modulos.consultas.portas.unidade_de_trabalho import UnidadeDeTrabalho
-from clinica.modulos.notificacoes.dominio.notificacao import Notificacao, NotificacaoPendente
+from clinica.modulos.consultas.portas.consulta_repositorio import ConsultaRepositorio
+from clinica.modulos.notificacoes.contratos import Notificacoes
 
 
 @dataclass(frozen=True)
@@ -34,10 +31,10 @@ class AgendarConsulta:
 
     def __init__(
         self,
-        uow: UnidadeDeTrabalho,
+        consultas: ConsultaRepositorio,
         relogio: Callable[[], datetime] = datetime.now,
     ) -> None:
-        self._uow = uow
+        self._consultas = consultas
         self._relogio = relogio
 
     def executar(self, comando: AgendarConsultaComando) -> Consulta:
@@ -52,27 +49,19 @@ class AgendarConsulta:
         if not slot.esta_no_futuro(self._relogio()):
             raise SlotInvalidoError("O horário da consulta deve estar no futuro.")
 
-        # Consulta e notificação pendente só valem juntas, no commit (ver
-        # UnidadeDeTrabalho). Qualquer erro antes dele desfaz as duas.
-        with self._uow as uow:
+        # Consulta e notificação pendente só valem juntas, na mesma transação.
+        with self._consultas.transacao():
             # O horário pode ter começado durante a espera por BEGIN IMMEDIATE.
             if not slot.esta_no_futuro(self._relogio()):
                 raise SlotInvalidoError("O horário da consulta deve estar no futuro.")
 
-            paciente = uow.pacientes.obter_por_id(comando.usuario.id)
-            if paciente is None:
-                raise EntidadeNaoEncontradaError("Paciente não encontrado.")
-            profissional = uow.profissionais.obter_por_id(comando.profissional_id)
-            if profissional is None:
-                raise EntidadeNaoEncontradaError("Profissional não encontrado.")
+            paciente = Cadastros.obter_paciente(comando.usuario.id)
+            profissional = Cadastros.obter_profissional(comando.profissional_id)
 
-            agenda_profissional = carregar_agenda_do_profissional(
-                uow, profissional.id, slot.inicio.date()
-            )
-            agenda_profissional.verificar_disponivel(slot)
+            Agenda.verificar_disponibilidade(profissional.id, slot)
 
             agenda_paciente = AgendaPaciente(
-                paciente.id, uow.consultas.listar_consultas_ativas_paciente(paciente.id)
+                paciente.id, self._consultas.listar_consultas_ativas_paciente(paciente.id)
             )
             agenda_paciente.verificar_pode_agendar(
                 slot, profissional.especialidade.id, self._relogio()
@@ -85,7 +74,7 @@ class AgendarConsulta:
                 slot=slot,
             )
             try:
-                consulta = uow.consultas.adicionar(consulta)
+                consulta = self._consultas.adicionar(consulta)
             except ConflitoDePersistenciaError as erro:
                 # Outra reserva concorrente venceu a corrida (ASR-01).
                 if erro.participante == "paciente":
@@ -96,16 +85,11 @@ class AgendarConsulta:
                     "O horário foi ocupado por outra reserva."
                 ) from erro
 
-            uow.notificacoes_pendentes.adicionar(
-                NotificacaoPendente(
-                    Notificacao.de_agendamento(
-                        destinatario=paciente.email,
-                        nome_paciente=paciente.nome,
-                        nome_profissional=profissional.nome,
-                        nome_especialidade=profissional.especialidade.nome,
-                        inicio=slot.inicio,
-                    )
-                )
+            Notificacoes.registrar_agendamento(
+                destinatario=paciente.email,
+                nome_paciente=paciente.nome,
+                nome_profissional=profissional.nome,
+                nome_especialidade=profissional.especialidade.nome,
+                inicio=slot.inicio,
             )
-            uow.commit()
             return consulta

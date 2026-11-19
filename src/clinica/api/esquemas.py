@@ -3,10 +3,10 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, NaiveDatetime
 
-from clinica.modulos.agenda.dominio.slot import Slot
-from clinica.modulos.consultas.aplicacao.consultar_disponibilidade import (
+from clinica.modulos.agenda.aplicacao.consultar_disponibilidade import (
     DisponibilidadeDoProfissional,
 )
+from clinica.modulos.agenda.dominio.slot import Slot
 from clinica.modulos.consultas.dominio.consulta import Consulta
 
 

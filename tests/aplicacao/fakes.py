@@ -1,9 +1,11 @@
-"""Repositórios e unidade de trabalho em memória, só para testar os casos de uso.
+"""Repositórios em memória, só para testar os casos de uso.
 
 Imitam o comportamento relevante do banco: o índice único parcial por
-``(participante, inicio)`` das consultas ativas e o rollback ao sair sem commit.
+``(participante, inicio)`` das consultas ativas e o rollback quando uma
+transação falha com exceção.
 """
 import copy
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime
 
@@ -17,7 +19,6 @@ from clinica.modulos.cadastros.portas.repositorios import (
 )
 from clinica.modulos.consultas.dominio.consulta import Consulta
 from clinica.modulos.consultas.portas.consulta_repositorio import ConsultaRepositorio
-from clinica.modulos.consultas.portas.unidade_de_trabalho import UnidadeDeTrabalho
 from clinica.modulos.notificacoes.dominio.notificacao import (
     EstadoNotificacao,
     NotificacaoPendente,
@@ -47,10 +48,24 @@ class BancoEmMemoria:
     def restaurar(self, estado) -> None:
         self.horarios, self.bloqueios, self.consultas, self.pendentes, self._proximo_id = estado
 
+    @contextmanager
+    def transacao(self):
+        estado = copy.deepcopy(self._mutavel())
+        try:
+            yield
+        except BaseException:
+            self.restaurar(estado)
+            raise
+
 
 class ConsultaRepositorioEmMemoria(ConsultaRepositorio):
     def __init__(self, banco: BancoEmMemoria) -> None:
         self._b = banco
+
+    @contextmanager
+    def transacao(self):
+        with self._b.transacao():
+            yield
 
     def adicionar(self, consulta: Consulta) -> Consulta:
         if consulta.esta_ativa:
@@ -115,6 +130,11 @@ class NotificacaoPendenteRepositorioEmMemoria(NotificacaoPendenteRepositorio):
     def __init__(self, banco: BancoEmMemoria) -> None:
         self._b = banco
 
+    @contextmanager
+    def transacao(self):
+        with self._b.transacao():
+            yield
+
     def adicionar(self, pendente):
         pendente = pendente.com_id(self._b.novo_id())
         self._b.pendentes.append(pendente)
@@ -132,51 +152,3 @@ class NotificacaoPendenteRepositorioEmMemoria(NotificacaoPendenteRepositorio):
 
     def atualizar(self, pendente):
         self._b.pendentes = [pendente if p.id == pendente.id else p for p in self._b.pendentes]
-
-
-class UnidadeDeTrabalhoEmMemoria(UnidadeDeTrabalho):
-    """Snapshot ao entrar; restaura se sair sem ``commit()``."""
-
-    def __init__(self, banco: BancoEmMemoria) -> None:
-        self._banco = banco
-        self._consultas = ConsultaRepositorioEmMemoria(banco)
-        self._agendas = AgendaRepositorioEmMemoria(banco)
-        self._pacientes = PacienteRepositorioEmMemoria(banco)
-        self._profissionais = ProfissionalRepositorioEmMemoria(banco)
-        self._notificacoes_pendentes = NotificacaoPendenteRepositorioEmMemoria(banco)
-        self._estado = None
-        self._aberta = False
-
-    @property
-    def consultas(self):
-        return self._consultas
-
-    @property
-    def agendas(self):
-        return self._agendas
-
-    @property
-    def pacientes(self):
-        return self._pacientes
-
-    @property
-    def profissionais(self):
-        return self._profissionais
-
-    @property
-    def notificacoes_pendentes(self):
-        return self._notificacoes_pendentes
-
-    def iniciar(self, somente_leitura: bool = False) -> None:
-        self._estado = copy.deepcopy(self._banco._mutavel())
-        self._aberta = True
-        self.abriu_somente_leitura = somente_leitura
-
-    def commit(self) -> None:
-        if self._aberta:
-            self._aberta = False
-
-    def rollback(self) -> None:
-        if self._aberta:
-            self._banco.restaurar(self._estado)
-            self._aberta = False
