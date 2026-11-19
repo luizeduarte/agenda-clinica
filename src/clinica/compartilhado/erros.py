@@ -19,12 +19,6 @@ class ConflitoDoPacienteError(ErroDeDominio):
 class LimiteDoPacienteExcedidoError(ErroDeDominio):
     """Excede 2 consultas ativas no dia ou 1 futura por especialidade (RN08)."""
 
-class TransicaoInvalidaError(ErroDeDominio):
-    """Mudança de estado não permitida para a consulta."""
-
-class CancelamentoForaDoPrazoError(ErroDeDominio):
-    """Antecedência mínima de cancelamento não respeitada (RN05)."""
-
 class EntidadeNaoEncontradaError(ErroDeDominio):
     """Paciente, profissional ou consulta inexistente."""
 

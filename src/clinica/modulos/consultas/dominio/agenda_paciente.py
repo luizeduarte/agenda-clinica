@@ -16,13 +16,6 @@ class AgendaPaciente:
         self.paciente_id = paciente_id
         self.consultas_ativas = [c for c in consultas if c.esta_ativa]
 
-    def pode_agendar(self, slot: Slot, especialidade_id: int, agora: datetime) -> bool:
-        try:
-            self.verificar_pode_agendar(slot, especialidade_id, agora)
-            return True
-        except (ConflitoDoPacienteError, LimiteDoPacienteExcedidoError):
-            return False
-
     def verificar_pode_agendar(self, slot: Slot, especialidade_id: int, agora: datetime) -> None:
         """Levanta erro se o paciente não puder reservar ``slot`` com a especialidade dada."""
         if any(c.slot.sobrepoe(slot) for c in self.consultas_ativas):

@@ -18,7 +18,6 @@ class TestSlot:
     def test_a_partir_de_cria_slot_de_30_minutos(self):
         slot = Slot.a_partir_de(dt(10, 0))
         assert slot.fim == dt(10, 30)
-        assert slot.validar_grade()
 
     @pytest.mark.parametrize("minuto", [0, 30])
     def test_aceita_inicio_na_grade(self, minuto):

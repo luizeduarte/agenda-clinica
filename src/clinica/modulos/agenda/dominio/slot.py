@@ -18,24 +18,21 @@ class Slot:
     inicio: datetime
     fim: datetime
 
+    def __post_init__(self) -> None:
+        """Valida a grade na criação: não existe ``Slot`` fora dela (RN02)."""
+        if not self._esta_na_grade(self.inicio):
+            raise SlotInvalidoError(f"O slot deve começar em :00 ou :30, não em {self.inicio}.")
+        if self.fim - self.inicio != DURACAO:
+            raise SlotInvalidoError("O slot deve durar exatamente 30 minutos.")
+
     @staticmethod
-    def esta_na_grade(momento: datetime) -> bool:
+    def _esta_na_grade(momento: datetime) -> bool:
         """``True`` se o instante cai em ``:00`` ou ``:30`` exatos."""
         return (
             momento.minute in MINUTOS_DA_GRADE
             and momento.second == 0
             and momento.microsecond == 0
         )
-
-    def validar_grade(self) -> bool:
-        """``True`` se começa em ``:00``/``:30`` e dura exatamente 30 minutos."""
-        return self.esta_na_grade(self.inicio) and (self.fim - self.inicio == DURACAO)
-
-    def __post_init__(self) -> None:
-        if not self.validar_grade():
-            if not self.esta_na_grade(self.inicio):
-                raise SlotInvalidoError(f"O slot deve começar em :00 ou :30, não em {self.inicio}.")
-            raise SlotInvalidoError("O slot deve durar exatamente 30 minutos.")
 
     @classmethod
     def a_partir_de(cls, inicio: datetime) -> "Slot":

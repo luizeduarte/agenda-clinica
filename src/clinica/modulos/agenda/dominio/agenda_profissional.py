@@ -44,10 +44,7 @@ class AgendaProfissional:
         return sorted(slots, key=lambda s: s.inicio)
 
     def slots_disponiveis(self, dia: date) -> list[Slot]:
-        return [s for s in self.slots_de_atendimento(dia) if self.esta_disponivel(s)]
-
-    def esta_disponivel(self, slot: Slot) -> bool:
-        return self._motivo_indisponivel(slot) is None
+        return [s for s in self.slots_de_atendimento(dia) if self._motivo_indisponivel(s) is None]
 
     def verificar_disponivel(self, slot: Slot) -> None:
         motivo = self._motivo_indisponivel(slot)

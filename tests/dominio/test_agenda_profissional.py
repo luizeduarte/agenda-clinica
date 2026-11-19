@@ -42,9 +42,10 @@ def test_dia_sem_atendimento_nao_tem_slots(agenda):
 
 def test_slot_livre_passa_na_verificacao(agenda):
     agenda.verificar_disponivel(slot(10, 0))
-    assert agenda.esta_disponivel(slot(10, 0))
-    assert not agenda.esta_disponivel(slot(8, 30))
-    assert not agenda.esta_disponivel(slot(9, 0))
+    disponiveis = agenda.slots_disponiveis(slot(10, 0).inicio.date())
+    assert slot(10, 0) in disponiveis
+    assert slot(8, 30) not in disponiveis
+    assert slot(9, 0) not in disponiveis
 
 
 def test_slot_ocupado_e_indisponivel(agenda):
