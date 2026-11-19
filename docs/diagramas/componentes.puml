@@ -31,7 +31,7 @@ package "Backend — monólito modular" {
   component "Adaptadores SQLite\nRepositórios e\nSQLiteUnidadeDeTrabalho" as SQLite
   component NotificadorFake
   component ServicoAutenticacaoFake
-  component ProcessadorNotificacoes
+  component ProcessadorDeNotificacoes
 }
 
 database "SQLite\nConsultas e pendências" as Banco
@@ -42,13 +42,15 @@ API ..> Agenda
 API ..> Autenticacao
 Consultas ..> Agenda : Slot e\ndisponibilidade
 Consultas ..> Cadastros
+Consultas ..> Autenticacao : Usuario e Papel
+Consultas ..> Notificacoes : criação da notificação
 Consultas ..> Dados
 Agenda ..> Dados
 Cadastros ..> Dados : PacienteRepositorio e\nProfissionalRepositorio
 Autenticacao ..> ServicoAutenticacao
 ServicoAutenticacaoFake .up.|> ServicoAutenticacao
 
-ProcessadorNotificacoes ..> Notificacoes : execução posterior
+ProcessadorDeNotificacoes ..> Notificacoes : execução posterior
 Notificacoes ..> Dados : pendências e\ntentativas
 Notificacoes ..> Notificador
 NotificadorFake .up.|> Notificador

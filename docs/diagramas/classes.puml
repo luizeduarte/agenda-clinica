@@ -29,7 +29,6 @@ class Paciente {
   email: String
 }
 class AgendaProfissional {
-  +esta_disponivel(slot: Slot): Boolean
   +verificar_disponivel(slot: Slot)
   +slots_disponiveis(dia: Date): Slot[*]
 }
@@ -52,13 +51,14 @@ class Consulta {
   +cancelar()
 }
 class AgendaPaciente {
-  +pode_agendar(slot: Slot, especialidade_id: ID, agora: DateTime): Boolean
   +verificar_pode_agendar(slot: Slot, especialidade_id: ID, agora: DateTime)
 }
 class Slot <<valor>> {
   inicio: DateTime
   fim: DateTime
-  +validar_grade(): Boolean
+  {static} +a_partir_de(inicio: DateTime): Slot
+  {static} +esta_na_grade(momento: DateTime | Hora): Boolean
+  +esta_no_futuro(agora: DateTime): Boolean
   +sobrepoe(outro: Slot): Boolean
 }
 enum StatusConsulta <<enumeration>> {
@@ -68,7 +68,7 @@ enum StatusConsulta <<enumeration>> {
   REALIZADA
   FALTOU
 }
-class PoliticaDeCancelamento {
+class PoliticaDeCancelamento <<prevista>> {
   +permite_cancelar(consulta: Consulta, papel: Papel,\n  agora: DateTime, nome_especialidade: String): Boolean
   +verificar_pode_cancelar(consulta: Consulta, papel: Papel,\n  agora: DateTime, nome_especialidade: String)
 }
@@ -95,7 +95,9 @@ legend bottom
   Cada paciente tem uma agenda no modelo. /consultas ativas é
   uma visão em memória construída a partir das consultas do paciente.
   A consulta copia a especialidade do profissional ao agendar (RN08).
-  A política de cancelamento é usada por CancelarConsulta (RN05).
+  confirmar(), cancelar() e PoliticaDeCancelamento são previstos,
+  fora do recorte do protótipo (RN05 e RN07).
+  As verificações das agendas lançam exceção em caso de rejeição.
   Slot: 30 min, início em :00 ou :30 (RN02).
   AGENDADA e CONFIRMADA ocupam o slot (RN03).
 endlegend

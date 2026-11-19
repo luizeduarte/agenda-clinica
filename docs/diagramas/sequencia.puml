@@ -20,11 +20,19 @@ participant "AgendaPaciente" as APA
 participant "NotificacaoPendenteRepositorio" as NREP
 database "SQLite" as DB
 
-P -> C : POST /consultas (profissional_id, inicio)
-opt Porta aplicável à identificação
-  C -> AUTH : identificar(credencial)
-  AUTH --> C : usuario
+P -> C : POST /consultas (profissional_id, inicio)\nAuthorization: Bearer <token>
+break Cabeçalho ausente ou malformado
+  C --> P : 401 Unauthorized
 end
+C -> AUTH : identificar(credencial)
+break Credencial inválida
+  AUTH --> C : NaoAutenticadoError
+  C --> P : 401 Unauthorized
+end
+AUTH --> C : usuario
+note over AUTH
+  No protótipo, ServicoAutenticacaoFake.
+end note
 note over C
   Agendar requer autorização pelo papel (RNF03).
 end note
@@ -33,7 +41,7 @@ alt Papel sem permissão
   UC --> C : NaoAutorizadoError
   C --> P : 403 Forbidden
 else Paciente identificado e autorizado
-  UC -> SLOT : a_partir_de(inicio) / validar_grade()
+  UC -> SLOT : a_partir_de(inicio)
 
   alt Dados ou slot invalidos
     SLOT --> UC : SlotInvalidoError
@@ -41,27 +49,55 @@ else Paciente identificado e autorizado
     C --> P : 400 Bad Request
   else Slot valido
     SLOT --> UC : slot
+    UC -> SLOT : esta_no_futuro(agora)
+    break Horário já iniciado
+      SLOT --> UC : false
+      UC --> C : SlotInvalidoError
+      C --> P : 400 Bad Request
+    end
+    SLOT --> UC : true
     UC -> UOW : iniciar()
     UOW -> DB : BEGIN IMMEDIATE
+    note over UC, SLOT : O relógio é lido novamente após adquirir o bloqueio.
+    UC -> SLOT : esta_no_futuro(agora)
+    break Horário iniciado durante a espera pelo bloqueio
+      SLOT --> UC : false
+      UC -> UOW : rollback()
+      UOW -> DB : ROLLBACK
+      UC --> C : SlotInvalidoError
+      C --> P : 400 Bad Request
+    end
+    SLOT --> UC : true
     UC -> CAD : obter_por_id(paciente_id)\ne obter_por_id(profissional_id)
     CAD --> UC : paciente, profissional
     UC -> AGREP : obter_horarios_atendimento(profissional_id)\ne listar_bloqueios(profissional_id, inicio, fim)
     AGREP --> UC : horarios e bloqueios
-    UC -> CREP : listar_consultas_ativas_profissional(...)\ne listar_consultas_ativas_paciente(...)
-    CREP --> UC : consultas ativas
+    UC -> CREP : listar_consultas_ativas_profissional(...)
+    CREP --> UC : consultas ativas do profissional
 
-    note over AP, APA : Agendas montadas com os dados carregados.
+    note over AP : Agenda montada com os dados carregados.
     UC -> AP : verificar_disponivel(slot)
-    AP --> UC : disponivel / HorarioIndisponivelError
+    break Horário ocupado, bloqueado ou fora do atendimento
+      AP --> UC : HorarioIndisponivelError
+      UC -> UOW : rollback()
+      UOW -> DB : ROLLBACK
+      UC --> C : conflito de agendamento
+      C --> P : 409 Conflict
+    end
+    AP --> UC : sem valor de retorno
+    UC -> CREP : listar_consultas_ativas_paciente(...)
+    CREP --> UC : consultas ativas do paciente
+    note over APA : Agenda montada com os dados carregados.
     UC -> APA : verificar_pode_agendar(slot, especialidade_id, agora)
-    APA --> UC : permitido / conflito ou limite
 
-    alt Conflito, bloqueio ou limite excedido
+    alt Conflito ou limite do paciente excedido
+      APA --> UC : ConflitoDoPacienteError / LimiteDoPacienteExcedidoError
       UC -> UOW : rollback()
       UOW -> DB : ROLLBACK
       UC --> C : conflito de agendamento
       C --> P : 409 Conflict
     else Horario disponivel
+      APA --> UC : sem valor de retorno
       create participant "consulta: Consulta" as CONS
       UC -> CONS : «create» AGENDADA
       alt Duas gravações e commit bem-sucedidos
@@ -93,7 +129,7 @@ else Paciente identificado e autorizado
 end
 
 == Processamento posterior (fora da requisicao HTTP) ==
-participant "ProcessadorNotificacoes" as PROC
+participant "ProcessadorDeNotificacoes" as PROC
 participant "Notificador" as NOTIF
 participant "pendente: NotificacaoPendente" as PEND
 PROC -> NREP : listar_para_envio()
