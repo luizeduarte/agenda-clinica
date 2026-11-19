@@ -8,28 +8,35 @@ skinparam maxMessageSize 85
 
 actor "Paciente" as P
 boundary "AgendamentoController" as C
-control "AgendarConsulta" as UC
+participant "Autenticacao\n(contrato)" as AUTH_C
 participant "ServicoAutenticacao" as AUTH
-participant "UnidadeDeTrabalho" as UOW
+control "AgendarConsulta" as UC
 participant "Slot" as SLOT
-participant "PacienteRepositorio /\nProfissionalRepositorio" as CAD
-participant "AgendaRepositorio" as AGREP
 participant "ConsultaRepositorio" as CREP
+participant "Cadastros\n(contrato)" as CAD
+participant "Agenda\n(contrato)" as AG_C
+participant "Consultas\n(contrato)" as CONS_C
+participant "AgendaRepositorio" as AGREP
 participant "AgendaProfissional" as AP
 participant "AgendaPaciente" as APA
+participant "Notificacoes\n(contrato)" as NOT_C
 participant "NotificacaoPendenteRepositorio" as NREP
 database "SQLite" as DB
 
 P -> C : POST /consultas (profissional_id, inicio)\nAuthorization: Bearer <token>
+C -> AUTH_C : identificar_por_cabecalho(authorization)
 break Cabeçalho ausente ou malformado
+  AUTH_C --> C : NaoAutenticadoError
   C --> P : 401 Unauthorized
 end
-C -> AUTH : identificar(credencial)
+AUTH_C -> AUTH : identificar(token)
 break Credencial inválida
-  AUTH --> C : NaoAutenticadoError
+  AUTH --> AUTH_C : NaoAutenticadoError
+  AUTH_C --> C : NaoAutenticadoError
   C --> P : 401 Unauthorized
 end
-AUTH --> C : usuario
+AUTH --> AUTH_C : usuario
+AUTH_C --> C : usuario
 note over AUTH
   No protótipo, ServicoAutenticacaoFake.
 end note
@@ -56,44 +63,46 @@ else Paciente identificado e autorizado
       C --> P : 400 Bad Request
     end
     SLOT --> UC : true
-    UC -> UOW : iniciar()
-    UOW -> DB : BEGIN IMMEDIATE
+    UC -> CREP : transacao()
+    CREP -> DB : BEGIN IMMEDIATE
     note over UC, SLOT : O relógio é lido novamente após adquirir o bloqueio.
     UC -> SLOT : esta_no_futuro(agora)
     break Horário iniciado durante a espera pelo bloqueio
       SLOT --> UC : false
-      UC -> UOW : rollback()
-      UOW -> DB : ROLLBACK
+      CREP -> DB : ROLLBACK
       UC --> C : SlotInvalidoError
       C --> P : 400 Bad Request
     end
     SLOT --> UC : true
-    UC -> CAD : obter_por_id(paciente_id)\ne obter_por_id(profissional_id)
+    UC -> CAD : obter_paciente(paciente_id)\ne obter_profissional(profissional_id)
     CAD --> UC : paciente, profissional
-    UC -> AGREP : obter_horarios_atendimento(profissional_id)\ne listar_bloqueios(profissional_id, inicio, fim)
-    AGREP --> UC : horarios e bloqueios
-    UC -> CREP : listar_consultas_ativas_profissional(...)
-    CREP --> UC : consultas ativas do profissional
+    UC -> AG_C : verificar_disponibilidade(profissional_id, slot)
+    AG_C -> CONS_C : listar_slots_ocupados_profissional(profissional_id, inicio, fim)
+    CONS_C -> CREP : listar_consultas_ativas_profissional(...)
+    CREP --> CONS_C : consultas ativas
+    CONS_C --> AG_C : slots ocupados
+    AG_C -> AGREP : obter_horarios_atendimento(profissional_id)\ne listar_bloqueios(profissional_id, inicio, fim)
+    AGREP --> AG_C : horarios e bloqueios
 
-    note over AP : Agenda montada com os dados carregados.
-    UC -> AP : verificar_disponivel(slot)
+    note over AP : AgendaProfissional montada com os dados carregados.
+    AG_C -> AP : verificar_disponivel(slot)
     break Horário ocupado, bloqueado ou fora do atendimento
-      AP --> UC : HorarioIndisponivelError
-      UC -> UOW : rollback()
-      UOW -> DB : ROLLBACK
+      AP --> AG_C : HorarioIndisponivelError
+      AG_C --> UC : HorarioIndisponivelError
+      CREP -> DB : ROLLBACK
       UC --> C : conflito de agendamento
       C --> P : 409 Conflict
     end
-    AP --> UC : sem valor de retorno
-    UC -> CREP : listar_consultas_ativas_paciente(...)
+    AP --> AG_C : sem valor de retorno
+    AG_C --> UC : sem valor de retorno
+    UC -> CREP : listar_consultas_ativas_paciente(paciente_id)
     CREP --> UC : consultas ativas do paciente
-    note over APA : Agenda montada com os dados carregados.
+    note over APA : AgendaPaciente montada com os dados carregados.
     UC -> APA : verificar_pode_agendar(slot, especialidade_id, agora)
 
     alt Conflito ou limite do paciente excedido
       APA --> UC : ConflitoDoPacienteError / LimiteDoPacienteExcedidoError
-      UC -> UOW : rollback()
-      UOW -> DB : ROLLBACK
+      CREP -> DB : ROLLBACK
       UC --> C : conflito de agendamento
       C --> P : 409 Conflict
     else Horario disponivel
@@ -103,17 +112,16 @@ else Paciente identificado e autorizado
       alt Duas gravações e commit bem-sucedidos
         UC -> CREP : adicionar(consulta)
         CREP -> DB : INSERT consulta
-        UC -> NREP : adicionar(pendente)
+        UC -> NOT_C : registrar_agendamento(...)
+        NOT_C -> NREP : adicionar(pendente)
         NREP -> DB : INSERT notificacao_pendente
-        UC -> UOW : commit()
-        UOW -> DB : COMMIT
+        CREP -> DB : COMMIT
         UC --> C : consulta registrada
         C --> P : 201 Created
       else Falha na gravação ou no commit
         note over UC, DB : A primeira falha interrompe as operações restantes.
         opt Transação ainda aberta
-          UC -> UOW : rollback()
-          UOW -> DB : ROLLBACK
+          CREP -> DB : ROLLBACK
         end
 
         alt Violação da restrição de unicidade da reserva
@@ -147,10 +155,10 @@ loop Para cada pendencia
   end
 end
 
-note over UOW, DB
-  O caso de uso chama portas abstratas.
+note over CREP, DB
+  Os casos de uso chamam portas abstratas e contratos entre módulos.
   Os adaptadores SQLite concretos executam o SQL.
-  SQLiteUnidadeDeTrabalho gerencia a conexão e a transação
+  ConexaoSQLite gerencia a conexão e a transação por thread
   compartilhadas pelos repositórios.
 end note
 note right of NOTIF

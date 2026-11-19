@@ -25,7 +25,7 @@ Contém os conceitos, estados, relacionamentos e regras essenciais do sistema, i
 | `Profissional` | `id`, `nome`, `especialidade` | Representar o profissional de saúde ou estagiário responsável pelos atendimentos e sua área de atuação. |
 | `Especialidade` | `id`, `nome` | Representar a área de atendimento da clínica (ex.: Clínica Médica, Pediatria, Odontologia), permitindo consultar profissionais por área e aplicar políticas específicas. |
 | `Slot` (`PeriodoConsulta`) | `inicio`, `fim` | Objeto de valor que representa o período `[inicio, fim)` de uma consulta, encapsulando o alinhamento à grade de 30 minutos (início em `:00` ou `:30`) e o cálculo de sobreposição de horários. A grade é validada na criação, de modo que não existe `Slot` fora dela; é isso que permite detectar conflitos pela igualdade do horário inicial (RN02). |
-| `AgendaProfissional` | `profissional_id`, `horarios_atendimento`, `bloqueios`, `slots_ocupados` | Avaliar a disponibilidade de horários **do profissional**, considerando seus períodos de atendimento, bloqueios datados e os `Slot`s já ocupados por consultas ativas. Recebe os slots, e não objetos `Consulta`, para que o módulo `agenda` não dependa do módulo `consultas`. Ao recusar um horário, lança uma exceção com o motivo (fora do atendimento, bloqueado ou ocupado), em vez de devolver um booleano: assim a decisão e o motivo ficam no domínio, e o caso de uso apenas coordena. |
+| `AgendaProfissional` | `profissional_id`, `horarios_atendimento`, `bloqueios`, `slots_ocupados` | Avaliar a disponibilidade de horários **do profissional**, considerando seus períodos de atendimento, bloqueios datados e os `Slot`s já ocupados por consultas ativas. Recebe os slots, e não objetos `Consulta`, para que o domínio do módulo `agenda` não dependa do domínio de `consultas`. Ao recusar um horário, lança uma exceção com o motivo (fora do atendimento, bloqueado ou ocupado), em vez de devolver um booleano: assim a decisão e o motivo ficam no domínio, e o caso de uso apenas coordena. |
 | `AgendaPaciente` | `paciente_id`, `consultas` | Avaliar a disponibilidade **do paciente** no domínio, impedindo sobreposição de consultas ativas em quaisquer profissionais (RN03) e validando o limite máximo de consultas ativas permitidas (RN08). Assim como `AgendaProfissional`, recusa lançando uma exceção com o motivo (conflito de horário ou limite excedido). |
 | `Consulta` | `id`, `paciente_id`, `profissional_id`, `especialidade_id`, `slot` (`inicio`, `fim`), `status` | Representar o agendamento entre paciente e profissional, mantendo seus participantes, a especialidade (copiada do profissional no agendamento, para o limite por especialidade da RN08), período e estado, além de controlar as transições válidas. |
 | `HorarioAtendimento` | `dia_semana`, `hora_inicio`, `hora_fim` | Representar os períodos **semanais recorrentes** de atendimento configurados individualmente para cada profissional (ex.: terças-feiras, das 08:00 às 12:00). |
@@ -51,7 +51,7 @@ Tanto `AgendaProfissional` quanto `AgendaPaciente` avaliam regras inteiramente e
 
 ### 2.2. Camada de aplicação
 
-Coordena os casos de uso e a interação entre as entidades/serviços do domínio e as portas de infraestrutura necessárias.
+Coordena os casos de uso no módulo responsável (`ConsultarDisponibilidade` em `agenda` e `AgendarConsulta` em `consultas`), orquestrando as entidades/serviços do domínio, as portas do próprio módulo e as fachadas em `<modulo>/contratos/` (`Agenda`, `Cadastros`, `Consultas`, `Notificacoes` e `Autenticacao`) na comunicação entre módulos.
 
 | Caso de uso | Requisito(s) | Responsabilidade |
 |---|---|---|
@@ -72,7 +72,7 @@ Os casos de uso não devem conter SQL, detalhes de HTTP ou lógica específica d
 
 **Apresentação**
 
-O `AgendamentoController` recebe requisições da API REST, valida o formato dos dados de entrada, obtém o usuário autenticado (quando aplicável via `ServicoAutenticacao`) e encaminha as operações aos casos de uso correspondentes.
+O `AgendamentoController` recebe requisições da API REST, valida o formato dos dados de entrada, obtém o usuário autenticado (quando aplicável via contrato `Autenticacao`, que encapsula `ServicoAutenticacao`) e encaminha as operações aos casos de uso correspondentes.
 
 Também é responsável por transformar os resultados e erros da aplicação em respostas HTTP adequadas.
 
@@ -82,20 +82,19 @@ Não deve implementar regras de disponibilidade ou cancelamento, nem acessar dir
 
 | Componente | Tipo | Responsabilidade |
 |---|---|---|
-| `ConsultaRepositorio` | Porta (Interface) | Definir operações de persistência e recuperação de consultas (por ID, por profissional ou por paciente), sem executar regras de negócio. |
+| `ConsultaRepositorio` | Porta (Interface) | Definir operações de persistência e recuperação de consultas (por ID, por profissional ou por paciente) e o contexto transacional (`transacao()`), sem executar regras de negócio. |
 | `AgendaRepositorio` | Porta (Interface) | Definir operações de persistência e leitura de horários de atendimento e bloqueios. |
 | `PacienteRepositorio` | Porta (Interface) | Definir operações de leitura dos dados essenciais do paciente para correlação com agendas e consultas. |
 | `ProfissionalRepositorio` | Porta (Interface) | Definir operações de leitura de profissionais e suas especialidades (incluindo consulta por especialidade). |
-| `NotificacaoPendenteRepositorio` | Porta (Interface) | Definir operações para registrar, consultar e atualizar o estado de notificações pendentes. |
-| `UnidadeDeTrabalho` | Porta (Interface) | Coordenar uma transação única compartilhada pelos repositórios cujas gravações precisam ocorrer atomicamente. |
+| `NotificacaoPendenteRepositorio` | Porta (Interface) | Definir operações para registrar, consultar e atualizar o estado de notificações pendentes, além do contexto transacional (`transacao()`). |
 | `Notificador` | Porta (Interface) | Definir o contrato para envio de notificações, independentemente do canal utilizado. |
 | `ServicoAutenticacao` | Porta (Interface) | Definir o contrato de identificação do usuário e seu papel (incluindo autenticação universitária de profissionais e estagiários). |
+| `ConexaoSQLite` | Infraestrutura | Gerenciar conexões por thread e transações (`BEGIN IMMEDIATE`, commit, rollback e snapshots de leitura) compartilhadas pelos repositórios SQLite. |
 | `SQLiteConsultaRepositorio` | Adaptador (Infraestrutura) | Implementar `ConsultaRepositorio` utilizando SQLite. |
 | `SQLiteAgendaRepositorio` | Adaptador (Infraestrutura) | Implementar `AgendaRepositorio` utilizando SQLite. |
 | `SQLitePacienteRepositorio` | Adaptador (Infraestrutura) | Implementar `PacienteRepositorio` utilizando SQLite. |
 | `SQLiteProfissionalRepositorio` | Adaptador (Infraestrutura) | Implementar `ProfissionalRepositorio` utilizando SQLite. |
-| `SQLiteNotificacaoPendenteRepositorio` | Adaptador (Infraestrutura) | Implementar `NotificacaoPendenteRepositorio` utilizando SQLite sobre a conexão da unidade de trabalho. |
-| `SQLiteUnidadeDeTrabalho` | Adaptador (Infraestrutura) | Implementar `UnidadeDeTrabalho` gerenciando a conexão e a transação (`BEGIN IMMEDIATE`, commit e rollback) no SQLite. |
+| `SQLiteNotificacaoPendenteRepositorio` | Adaptador (Infraestrutura) | Implementar `NotificacaoPendenteRepositorio` utilizando SQLite sobre a conexão gerenciada por `ConexaoSQLite`. |
 | `NotificadorFake` | Adaptador (Infraestrutura) | Simular o envio de notificações durante o desenvolvimento e os testes. |
 | `ServicoAutenticacaoFake` | Adaptador (Infraestrutura) | Simular o serviço de autenticação da universidade durante o protótipo. |
 
@@ -145,7 +144,7 @@ As responsabilidades são separadas conforme seus motivos de mudança:
 - `Slot` isola o modelo temporal dos horários.
 - `PoliticaDeCancelamento` isola prazos de cancelamento por perfil/especialidade.
 - `Consulta` concentra o estado e o comportamento do agendamento.
-- Os casos de uso apenas orquestram fluxos entre domínio e portas.
+- Os casos de uso apenas orquestram fluxos entre domínio, contratos entre módulos e portas.
 - Os repositórios implementam o acesso aos dados de forma segregada por recurso.
 - Os adaptadores externos encapsulam comunicação e autenticação.
 
@@ -161,9 +160,9 @@ Substituir `NotificadorFake` por `EmailNotificador` ou `WhatsAppNotificador` exi
 
 ### 3.6. Pure Fabrication
 
-**Aplicação: repositórios, `UnidadeDeTrabalho` e casos de uso**
+**Aplicação: repositórios, contratos entre módulos e casos de uso**
 
-Componentes como repositórios e `UnidadeDeTrabalho` não representam entidades naturais do domínio da clínica, mas são introduzidos para coordenar persistência e transações sem contaminar entidades de domínio com detalhes técnicos de SQL.
+Componentes como repositórios, fachadas de `contratos/` e casos de uso não representam entidades naturais do domínio da clínica, mas são introduzidos para coordenar fluxos, comunicação entre módulos e persistência sem contaminar entidades de domínio com detalhes técnicos de SQL.
 
 ## 4. Aplicação dos princípios SOLID
 
@@ -186,16 +185,16 @@ A organização proposta mantém responsabilidades relacionadas dentro de um mes
 - **Domínio:** `AgendaProfissional`, `AgendaPaciente`, `Slot`, `Consulta`, `HorarioAtendimento`, `Bloqueio` e `PoliticaDeCancelamento` concentram regras de negócio puras, sem SQL ou HTTP.
 - **Aplicação:** os casos de uso coordenam operações específicas, delegando validações de negócio às classes de domínio.
 - **Apresentação:** controllers concentram tradução HTTP/JSON e validação estrutural de entrada.
-- **Infraestrutura:** repositórios, unidade de trabalho e adaptadores concentram detalhes de SQLite e integrações externas.
+- **Infraestrutura:** repositórios, gerenciamento de conexões/transações (`ConexaoSQLite`) e adaptadores concentram detalhes de SQLite e integrações externas.
 
 ### 5.2. Acoplamento
 
 O acoplamento é reduzido pela inversão de dependências e pelo isolamento das regras de negócio:
 
-- `AgendarConsulta` depende das portas de repositório e de `UnidadeDeTrabalho`, e não do SQLite.
+- `AgendarConsulta` depende da porta `ConsultaRepositorio` e dos contratos `Cadastros`, `Agenda` e `Notificacoes`, e não do SQLite.
 - `AgendarConsulta` delega conflitos e limites do paciente para `AgendaPaciente`, evitando que o caso de uso precise ser alterado caso a regra de conflito mude (ex.: slots dinâmicos).
 - O processamento de notificações depende apenas de `NotificacaoPendenteRepositorio` e `Notificador`.
-- `ConsultaRepositorio` e `NotificacaoPendenteRepositorio` permanecem desacoplados em suas interfaces, compartilhando a mesma transação física apenas na infraestrutura via `SQLiteUnidadeDeTrabalho`.
+- `ConsultaRepositorio` e `NotificacaoPendenteRepositorio` permanecem desacoplados em suas interfaces, compartilhando a mesma transação física apenas na infraestrutura via `ConexaoSQLite`.
 
 ### 5.3. Trade-offs
 
@@ -207,14 +206,14 @@ Esse custo é justificado pela necessidade de testar regras de negócio isoladam
 
 O principal caso de uso seguirá conceitualmente as seguintes etapas:
 
-1. O `AgendamentoController` recebe a solicitação HTTP, valida os parâmetros de entrada e obtém o contexto autenticado (quando aplicável via `ServicoAutenticacao`).
-2. O caso de uso `AgendarConsulta` cria o `Slot` do horário solicitado, que valida a duração e o alinhamento à grade, e recusa o horário se ele já tiver começado (RN09). Essas validações dependem apenas do horário pedido e do relógio, por isso ocorrem antes de abrir a transação. Assim, um horário fora da grade ou no passado é recusado sem ocupar o bloqueio de escrita do banco.
-3. `AgendarConsulta` inicia a `UnidadeDeTrabalho` (abrindo a transação de escrita no banco), recupera os dados necessários por meio de `AgendaRepositorio`, `ConsultaRepositorio`, `PacienteRepositorio` e `ProfissionalRepositorio`, e o domínio valida a operação:
-   - `AgendaProfissional` avalia a disponibilidade do profissional (período de atendimento em `HorarioAtendimento`, ausência de `Bloqueio` e ausência de conflito com consultas ativas).
-   - `AgendaPaciente` verifica se o paciente não possui outra consulta ativa sobreposta no período e se respeita o limite de agendamentos ativos.
+1. O `AgendamentoController` recebe a solicitação HTTP, valida os parâmetros de entrada e obtém o `Usuario` autenticado via contrato `Autenticacao.identificar_por_cabecalho`.
+2. O caso de uso `AgendarConsulta` valida o papel (`Papel.PACIENTE`), cria o `Slot` do horário solicitado (validando duração e alinhamento à grade) e recusa o horário se ele já tiver começado (RN09). Essas validações dependem apenas do horário pedido e do relógio, por isso ocorrem antes de abrir a transação. Assim, um horário fora da grade ou no passado é recusado sem ocupar o bloqueio de escrita do banco.
+3. `AgendarConsulta` abre a transação de escrita via `ConsultaRepositorio.transacao()`, confirma novamente que o horário ainda está no futuro, obtém `Paciente` e `Profissional` pelo contrato `Cadastros` e aciona `Agenda.verificar_disponibilidade`:
+   - `Agenda` consulta `AgendaRepositorio` (horários de atendimento e bloqueios) e `Consultas.listar_slots_ocupados_profissional` e delega a `AgendaProfissional` a verificação da disponibilidade do profissional.
+   - `AgendaPaciente`, preenchida com as consultas ativas obtidas via `ConsultaRepositorio.listar_consultas_ativas_paciente`, verifica se o paciente não possui outra consulta ativa sobreposta no período e se respeita o limite de agendamentos ativos.
 4. `AgendarConsulta` instancia a entidade `Consulta` no estado inicial `AGENDADA`.
-5. Dentro da mesma transação coordenada por `UnidadeDeTrabalho`, `ConsultaRepositorio` persiste a consulta e `NotificacaoPendenteRepositorio` registra a notificação pendente.
-6. A unidade de trabalho confirma a transação (`commit`) e a aplicação retorna os dados do agendamento.
+5. Dentro do mesmo bloco `ConsultaRepositorio.transacao()`, `ConsultaRepositorio.adicionar` persiste a consulta e o contrato `Notificacoes.registrar_agendamento` (via `NotificacaoPendenteRepositorio.adicionar`) registra a notificação pendente.
+6. Ao sair do bloco `transacao()`, a transação é confirmada (`COMMIT`) em conjunto — ou revertida (`ROLLBACK`) em caso de erro — e a aplicação retorna os dados do agendamento.
 7. Um processamento separado consulta as pendências e utiliza o `Notificador` para enviar a confirmação e tratar eventuais falhas.
 
 A validação realizada em memória pelo domínio não é suficiente, isoladamente, para garantir a consistência em situações de concorrência.
@@ -225,9 +224,9 @@ A infraestrutura de persistência aplica transações com bloqueio de escrita an
 
 A distribuição proposta atende diretamente aos três requisitos arquiteturalmente significativos selecionados:
 
-- **ASR-01 - Consistência:** `Slot`, `AgendaProfissional` e `AgendaPaciente` centralizam as regras de disponibilidade e conflito no domínio, enquanto `UnidadeDeTrabalho` e os repositórios garantem atomicidade e restrições únicas transacionais no banco tanto para o profissional quanto para o paciente.
-- **ASR-02 - Modificabilidade:** portas como `Notificador`, `ServicoAutenticacao` e os repositórios, somadas a `PoliticaDeCancelamento` e `Slot` no domínio, permitem evoluir integrações e regras sem reescrever os casos de uso.
-- **ASR-03 - Resiliência:** o registro conjunto da consulta e da notificação pendente via `UnidadeDeTrabalho` — mantendo `ConsultaRepositorio` e `NotificacaoPendenteRepositorio` segregados pelo SRP — permite que falhas no envio posterior não invalidem o agendamento.
+- **ASR-01 - Consistência:** `Slot`, `AgendaProfissional` e `AgendaPaciente` centralizam as regras de disponibilidade e conflito no domínio, enquanto o contexto transacional do repositório (`ConsultaRepositorio.transacao()` / `ConexaoSQLite`) e as restrições únicas no banco garantem atomicidade tanto para o profissional quanto para o paciente.
+- **ASR-02 - Modificabilidade:** portas como `Notificador`, `ServicoAutenticacao` e os repositórios, somadas aos contratos entre módulos (`contratos/`) e a `PoliticaDeCancelamento` e `Slot` no domínio, permitem evoluir integrações e regras sem reescrever os casos de uso.
+- **ASR-03 - Resiliência:** o registro conjunto da consulta e da notificação pendente na mesma transação (`ConsultaRepositorio.transacao()` com compartilhamento por `ConexaoSQLite`) — mantendo `ConsultaRepositorio` e `NotificacaoPendenteRepositorio` segregados pelo SRP — permite que falhas no envio posterior não invalidem o agendamento.
 
 ## 8. Considerações finais
 

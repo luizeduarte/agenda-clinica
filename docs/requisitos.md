@@ -33,6 +33,7 @@ O **sistema proposto** contempla as funcionalidades especificadas abaixo. Já o 
 - **RNF01 - Isolamento de notificações (Resiliência):** o envio de notificações não deve bloquear nem desfazer o fluxo gerador da notificação; falhas no canal externo devem ser registradas para tentativa posterior.
 - **RNF02 - Consistência e atomicidade:** operações de agendamento e reagendamento devem ocorrer de forma atômica e segura sob concorrência, impedindo reservas conflitantes ou perda da consulta original em caso de falha.
 - **RNF03 - Autorização por papéis:** as operações devem respeitar as permissões associadas a cada papel (`Paciente` e `Profissional / Estagiário`), rejeitando solicitações não autorizadas sem alterar dados.
+- **RNF04 - Substituição do mecanismo de persistência (Modificabilidade):** o acesso aos dados deve ser isolado por interfaces de repositório e adaptadores na camada de infraestrutura, permitindo substituir o sistema gerenciador de banco de dados (por exemplo, de SQLite para PostgreSQL) com baixo esforço e sem alterar entidades de domínio, contratos entre módulos ou casos de uso.
 
 ## 4. Regras de negócio
 

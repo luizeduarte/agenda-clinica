@@ -18,41 +18,41 @@ skinparam linetype polyline
 title Comunicação - AgendarConsulta
 
 object ":AgendamentoController" as C
-object ":ServicoAutenticacao" as Auth
+object ":Autenticacao\n(contrato)" as Auth
 object ":AgendarConsulta" as UC
 object ":Slot" as Horario
-object ":UnidadeDeTrabalho" as UoW
-object "Repositórios\n(portas)" as Repos
-object ":AgendaProfissional" as AP
+object ":ConsultaRepositorio\n(porta)" as CRep
+object ":Cadastros\n(contrato)" as Cad
+object ":Agenda\n(contrato)" as Ag
 object ":AgendaPaciente" as AC
 object ":Consulta" as Cons
+object ":Notificacoes\n(contrato)" as Notif
 object ":Paciente" as P
 
 P -right- C : → 1: POST /consultas\nAuthorization: Bearer <token>\n← 1.3: HTTP 201
-C -right-> Auth : 1.1: usuario :=\nidentificar(credencial)
+C -right-> Auth : 1.1: usuario :=\nidentificar_por_cabecalho(authorization)
 C -down-> UC : 1.2: consulta :=\nexecutar(comando)
 
 UC -left-> Horario : 1.2.1: slot := a_partir_de(inicio)\n1.2.2: esta_no_futuro(agora)\n1.2.4: esta_no_futuro(agora)
-UC -right-> UoW : 1.2.3: iniciar() / 1.2.11: commit()
-' O participante Repositórios agrupa portas distintas para compactar o desenho.
-UC -down-> Repos : 1.2.5: dados :=\ncarregar dados\n1.2.9: adicionar(consulta)\n1.2.10: adicionar(pendente)
-UC -down-> AP : 1.2.6: verificar_disponivel(slot)
-UC -down-> AC : 1.2.7: verificar_pode_agendar(slot,\nespecialidade_id, agora)
-UC -down-> Cons : 1.2.8: «create»\nAGENDADA
+UC -right-> CRep : 1.2.3: with transacao():\n1.2.8: listar_consultas_ativas_paciente()\n1.2.11: adicionar(consulta)
+UC -down-> Cad : 1.2.5: obter_paciente()\n1.2.6: obter_profissional()
+UC -down-> Ag : 1.2.7: verificar_disponibilidade(id, slot)
+UC -down-> AC : 1.2.9: verificar_pode_agendar(slot,\nespecialidade_id, agora)
+UC -down-> Cons : 1.2.10: «create»\nAGENDADA
+UC -down-> Notif : 1.2.12: registrar_agendamento(...)
 
 ' As ligações ocultas alinham os participantes abaixo do caso de uso.
-AP -[hidden]right-> AC
+Cad -[hidden]right-> Ag
+Ag -[hidden]right-> AC
 AC -[hidden]right-> Cons
-Cons -[hidden]right-> Repos
+Cons -[hidden]right-> Notif
 
 legend bottom
-  Paciente identificado por token Bearer, via ServicoAutenticacaoFake.
+  Paciente identificado por token Bearer via contrato Autenticacao (ServicoAutenticacaoFake).
   AgendarConsulta exige papel PACIENTE antes de criar o Slot.
-  O horário futuro é validado antes e após adquirir o bloqueio.
-  As verificações das agendas lançam exceção em caso de rejeição.
-  Cenário de sucesso. O retorno de executar ocorre após o commit.
-  ConsultaRepositorio e NotificacaoPendenteRepositorio gravam
-  na mesma transação. O envio ocorre posteriormente.
+  O horário futuro é validado antes e após abrir ConsultaRepositorio.transacao() (BEGIN IMMEDIATE).
+  Agenda.verificar_disponibilidade consulta AgendaRepositorio, Consultas e AgendaProfissional.
+  Cenário de sucesso: consulta e pendência gravadas via ConexaoSQLite na mesma transação.
 endlegend
 
 @enduml

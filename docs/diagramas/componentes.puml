@@ -19,16 +19,16 @@ component "Cliente web" as Web
 
 package "Backend — monólito modular" {
   component "API REST\nAgendamentoController" as API
-  component "Consultas\nAgendarConsulta\nConsultarDisponibilidade\nAgendaPaciente (domínio)" as Consultas
-  component "Agenda\nAgendaProfissional e Slot (domínio)" as Agenda
+  component "Consultas\nAgendarConsulta\nAgendaPaciente (domínio)" as Consultas
+  component "Agenda\nConsultarDisponibilidade\nAgendaProfissional e Slot (domínio)" as Agenda
   component Cadastros
   component "Notificações" as Notificacoes
   component "Autenticação" as Autenticacao
 
-  rectangle "«interfaces»\nPortas de persistência\nRepositórios\nUnidadeDeTrabalho" as Dados
+  rectangle "«interfaces»\nPortas de persistência\nRepositórios" as Dados
   rectangle "«interface»\nNotificador" as Notificador
   rectangle "«interface»\nServicoAutenticacao" as ServicoAutenticacao
-  component "Adaptadores SQLite\nRepositórios e\nSQLiteUnidadeDeTrabalho" as SQLite
+  component "Adaptadores SQLite\nRepositórios e\nConexaoSQLite" as SQLite
   component NotificadorFake
   component ServicoAutenticacaoFake
   component ProcessadorDeNotificacoes
@@ -39,12 +39,14 @@ database "SQLite\nConsultas e pendências" as Banco
 Web -down-> API : HTTP/JSON
 API ..> Consultas
 API ..> Agenda
-API ..> Autenticacao
-Consultas ..> Agenda : Slot e\ndisponibilidade
-Consultas ..> Cadastros
+API ..> Autenticacao : contrato
+Consultas ..> Agenda : contrato e Slot
+Consultas ..> Cadastros : contrato
 Consultas ..> Autenticacao : Usuario e Papel
-Consultas ..> Notificacoes : criação da notificação
+Consultas ..> Notificacoes : contrato (pendência)
 Consultas ..> Dados
+Agenda ..> Cadastros : contrato (profissionais)
+Agenda ..> Consultas : contrato (slots ocupados)
 Agenda ..> Dados
 Cadastros ..> Dados : PacienteRepositorio e\nProfissionalRepositorio
 Autenticacao ..> ServicoAutenticacao
@@ -59,10 +61,11 @@ SQLite .up.|> Dados
 SQLite -down-> Banco : transação local
 
 legend bottom
+  A comunicação entre módulos passa pelas fachadas em contratos/.
   As portas de persistência agrupam interfaces distintas.
-  SQLite: BEGIN IMMEDIATE e índices únicos parciais para
-  profissional e paciente por início de consulta ativa (ADR-003).
-  Consulta e pendência compartilham a transação. O processador
-  pode rodar fora do processo da API (ADR-002).
+  ConexaoSQLite gerencia a conexão por thread (BEGIN IMMEDIATE) para
+  que consulta e pendência compartilhem a mesma transação (ADR-002, ADR-003).
+  Índices únicos parciais garantem reserva única para profissional e paciente.
+  O processador de notificações pode rodar fora do processo da API (ADR-002).
 endlegend
 @enduml
