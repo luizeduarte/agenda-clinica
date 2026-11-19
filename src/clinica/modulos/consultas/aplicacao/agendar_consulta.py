@@ -55,6 +55,10 @@ class AgendarConsulta:
         # Consulta e notificação pendente só valem juntas, no commit (ver
         # UnidadeDeTrabalho). Qualquer erro antes dele desfaz as duas.
         with self._uow as uow:
+            # O horário pode ter começado durante a espera por BEGIN IMMEDIATE.
+            if not slot.esta_no_futuro(self._relogio()):
+                raise SlotInvalidoError("O horário da consulta deve estar no futuro.")
+
             paciente = uow.pacientes.obter_por_id(comando.usuario.id)
             if paciente is None:
                 raise EntidadeNaoEncontradaError("Paciente não encontrado.")

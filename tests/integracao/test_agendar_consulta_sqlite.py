@@ -1,11 +1,11 @@
 """`AgendarConsulta` ponta a ponta sobre o SQLite, incluindo concorrência (ASR-01)."""
 import threading
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 
-from clinica.compartilhado.erros import HorarioIndisponivelError, NaoAutorizadoError
+from clinica.compartilhado.erros import HorarioIndisponivelError, NaoAutorizadoError, SlotInvalidoError
 from clinica.infraestrutura.persistencia import SQLiteUnidadeDeTrabalho, inicializar_banco
 from clinica.infraestrutura.persistencia.conexao import abrir_conexao
 from clinica.infraestrutura.persistencia.dados_exemplo import popular_dados_de_exemplo
@@ -64,6 +64,51 @@ def test_agenda_persiste_consulta_e_notificacao(agendar, caminho):
     assert consulta.id is not None
     assert len(consultas_ativas(caminho)) == 1
     assert total(caminho, "notificacao_pendente") == 1
+
+
+@pytest.mark.parametrize("segundos_apos_inicio", [-1, 0, 1])
+def test_revalida_horario_apos_obter_bloqueio_de_escrita(caminho, segundos_apos_inicio):
+    horario = inicio(10)
+    instante = [horario - timedelta(seconds=2)]
+    validou = threading.Event()
+    resultados = []
+
+    def relogio():
+        agora = instante[0]
+        validou.set()
+        return agora
+
+    def executar():
+        try:
+            agendar = AgendarConsulta(SQLiteUnidadeDeTrabalho(caminho), relogio=relogio)
+            resultados.append(
+                agendar.executar(AgendarConsultaComando(Usuario(7, Papel.PACIENTE), 10, horario))
+            )
+        except Exception as erro:
+            resultados.append(erro)
+
+    reserva = abrir_conexao(caminho)
+    reserva.execute("BEGIN IMMEDIATE")
+    thread = threading.Thread(target=executar)
+    thread.start()
+    try:
+        assert validou.wait(timeout=5), "O pedido não chegou à validação inicial."
+        # O pedido passou pela primeira validação, mas ainda não pôde obter
+        # o bloqueio. Avança o relógio antes de liberar a outra transação.
+        instante[0] = horario + timedelta(seconds=segundos_apos_inicio)
+    finally:
+        reserva.execute("ROLLBACK")
+        reserva.close()
+        thread.join(timeout=10)
+
+    assert not thread.is_alive(), "O pedido não terminou após liberar o bloqueio."
+    (resultado,) = resultados
+    if segundos_apos_inicio < 0:
+        assert isinstance(resultado, Consulta), resultado
+        assert total(caminho, "consulta") == total(caminho, "notificacao_pendente") == 1
+    else:
+        assert isinstance(resultado, SlotInvalidoError), resultado
+        assert total(caminho, "consulta") == total(caminho, "notificacao_pendente") == 0
 
 
 def test_horario_ocupado_nao_grava_nada_alem_da_primeira(agendar, caminho):

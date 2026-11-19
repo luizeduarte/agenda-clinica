@@ -45,6 +45,9 @@ dessas escolhas estão na [proposta arquitetural](docs/arquitetura.md), nos
 O protótipo implementa a fatia vertical descrita acima: consulta de disponibilidade, agendamento e envio posterior das notificações.
 
 ### Executar
+
+Requer Python 3.11 ou superior.
+
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
@@ -100,8 +103,22 @@ python -m clinica.processar_notificacoes --simular-falha
 python -m clinica.processar_notificacoes
 ```
 
+### Testes
+
+Com o ambiente virtual ativado e as dependências instaladas:
+
+```bash
+python -m pytest -q
+```
+
 ## Diagramas
-TBD
+
+| Diagrama | PNG | SVG | Fonte PlantUML |
+|---|---|---|---|
+| Classes | [PNG](docs/diagramas/classes.png) | [SVG](docs/diagramas/classes.svg) | [PlantUML](docs/diagramas/classes.puml) |
+| Sequência | [PNG](docs/diagramas/sequencia.png) | [SVG](docs/diagramas/sequencia.svg) | [PlantUML](docs/diagramas/sequencia.puml) |
+| Comunicação | [PNG](docs/diagramas/comunicacao.png) | [SVG](docs/diagramas/comunicacao.svg) | [PlantUML](docs/diagramas/comunicacao.puml) |
+| Componentes | [PNG](docs/diagramas/componentes.png) | [SVG](docs/diagramas/componentes.svg) | [PlantUML](docs/diagramas/componentes.puml) |
 
 ## Documentação
 
@@ -115,4 +132,3 @@ TBD
   - [ADR-002: isolamento do notificador e estratégia de falha](docs/adr/ADR-002.md)
   - [ADR-003: persistência e garantia de conflito de horário](docs/adr/ADR-003.md)
   - [ADR-004: domínio isolado de infraestrutura](docs/adr/ADR-004.md)
-- [Diagramas UML](docs/diagramas/)
