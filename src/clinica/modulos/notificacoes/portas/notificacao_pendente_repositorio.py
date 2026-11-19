@@ -1,4 +1,6 @@
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 from clinica.modulos.notificacoes.dominio.notificacao import NotificacaoPendente
 
@@ -6,12 +8,14 @@ from clinica.modulos.notificacoes.dominio.notificacao import NotificacaoPendente
 class NotificacaoPendenteRepositorio(ABC):
     """Tabela de pendências (Transactional Outbox, ADR-002)."""
 
+    @contextmanager
+    def transacao(self) -> Iterator[None]:
+        """Delimita uma transação atômica para atualizar pendências."""
+        yield
+
     @abstractmethod
     def adicionar(self, pendente: NotificacaoPendente) -> NotificacaoPendente:
-        """Registra a pendência e devolve uma cópia com o ``id`` gerado.
-
-        Participa da transação da ``UnidadeDeTrabalho``.
-        """
+        """Registra a pendência e devolve uma cópia com o ``id`` gerado."""
 
     @abstractmethod
     def listar_para_envio(self, limite: int = 50) -> list[NotificacaoPendente]:

@@ -1,4 +1,6 @@
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime
 
 from clinica.modulos.consultas.dominio.consulta import Consulta
@@ -6,6 +8,11 @@ from clinica.modulos.consultas.dominio.consulta import Consulta
 
 class ConsultaRepositorio(ABC):
     """Persistência de consultas"""
+
+    @contextmanager
+    def transacao(self) -> Iterator[None]:
+        """Delimita uma transação atômica de escrita (ASR-01, ASR-03)."""
+        yield
 
     @abstractmethod
     def adicionar(self, consulta: Consulta) -> Consulta:

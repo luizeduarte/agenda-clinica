@@ -3,10 +3,8 @@
 Ponto de entrada para a composição da aplicação::
 
     inicializar_banco("clinica.db")
-    uow = SQLiteUnidadeDeTrabalho("clinica.db")
-    AgendarConsulta(uow)
+    banco = ConexaoSQLite("clinica.db")
 """
-from clinica.infraestrutura.persistencia.conexao import inicializar_banco
-from clinica.infraestrutura.persistencia.unidade_de_trabalho import SQLiteUnidadeDeTrabalho
+from clinica.infraestrutura.persistencia.conexao import ConexaoSQLite, inicializar_banco
 
-__all__ = ["SQLiteUnidadeDeTrabalho", "inicializar_banco"]
+__all__ = ["ConexaoSQLite", "inicializar_banco"]
