@@ -90,7 +90,7 @@ curl -X POST localhost:8000/consultas \
 
 ### Processar as notificações
 
-O agendamento apenas registra a notificação pendente. o envio é feito por um processo separado:
+O agendamento apenas registra a notificação pendente. O envio é feito por um processo separado:
 
 ```bash
 # Simula falha no canal: a notificação fica em FALHA, disponível para reenvio
@@ -98,6 +98,7 @@ python -m clinica.processar_notificacoes --simular-falha
 
 # Reenvia: a notificação passa para ENVIADA
 python -m clinica.processar_notificacoes
+```
 
 ## Diagramas
 TBD
