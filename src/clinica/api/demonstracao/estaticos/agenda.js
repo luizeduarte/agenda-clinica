@@ -4,7 +4,10 @@ const busca = document.querySelector("#busca");
 const reserva = document.querySelector("#reserva");
 const filtros = document.querySelector("#filtros");
 const escolha = document.querySelector("#escolha");
-const paciente = document.querySelector("#paciente");
+const entrada = document.querySelector("#entrada");
+const aplicacao = document.querySelector("#aplicacao");
+const usuarioAtual = document.querySelector("#usuario-atual");
+const sair = document.querySelector("#sair");
 const filtro = document.querySelector("#filtro");
 const dia = document.querySelector("#dia");
 const horarios = document.querySelector("#horarios");
@@ -12,6 +15,36 @@ const confirmar = document.querySelector("#confirmar");
 const mensagemHorarios = document.querySelector("#mensagem-horarios");
 const mensagemReserva = document.querySelector("#mensagem-reserva");
 let carregando = false;
+let sessao = null; // { token, nome, papel }: o que um login real deixaria no cliente
+
+function lerSessao() {
+    try {
+        return JSON.parse(sessionStorage.getItem("sessao"));
+    } catch {
+        return null;
+    }
+}
+
+function guardarSessao(valor) {
+    try {
+        if (valor) {
+            sessionStorage.setItem("sessao", JSON.stringify(valor));
+        } else {
+            sessionStorage.removeItem("sessao");
+        }
+    } catch {
+        // Sem armazenamento a sessão vale só até recarregar a página.
+    }
+}
+
+function mostrarSessao() {
+    const conectado = sessao !== null;
+    entrada.hidden = conectado;
+    aplicacao.hidden = !conectado;
+    usuarioAtual.hidden = !conectado;
+    sair.hidden = !conectado;
+    usuarioAtual.textContent = conectado ? `Conectado como ${sessao.nome} (${sessao.papel})` : "";
+}
 
 const amanha = new Date();
 amanha.setDate(amanha.getDate() + 1);
@@ -101,7 +134,7 @@ async function consultarHorarios() {
     const opcao = filtro.selectedOptions[0];
     const parametros = new URLSearchParams({ dia: dia.value, [opcao.dataset.parametro]: opcao.value });
     try {
-        mostrarHorarios(await chamarApi(`/disponibilidade?${parametros}`, paciente.value));
+        mostrarHorarios(await chamarApi(`/disponibilidade?${parametros}`, sessao.token));
     } catch (erro) {
         mensagem(mensagemHorarios, erro.message, "erro");
     }
@@ -141,7 +174,7 @@ reserva.addEventListener("submit", async evento => {
     definirCarregamento(true);
     mensagem(mensagemReserva, "Registrando agendamento…");
     try {
-        const consulta = await chamarApi("/consultas", paciente.value, {
+        const consulta = await chamarApi("/consultas", sessao.token, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ profissional_id: Number(slot.dataset.profissionalId), inicio: slot.value }),
@@ -156,3 +189,26 @@ reserva.addEventListener("submit", async evento => {
         definirCarregamento(false);
     }
 });
+
+entrada.addEventListener("click", evento => {
+    const botao = evento.target.closest("button[data-token]");
+    if (!botao) {
+        return;
+    }
+    const { token, nome, papel } = botao.dataset;
+    sessao = { token, nome, papel };
+    guardarSessao(sessao);
+    mostrarSessao();
+});
+
+sair.addEventListener("click", () => {
+    sessao = null;
+    guardarSessao(null);
+    limparHorarios();
+    mensagem(mensagemHorarios, "Consulte a disponibilidade para escolher um horário.");
+    mensagem(mensagemReserva, "");
+    mostrarSessao();
+});
+
+sessao = lerSessao();
+mostrarSessao();

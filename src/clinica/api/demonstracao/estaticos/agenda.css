@@ -32,7 +32,28 @@ body { margin: 0; }
     padding-block: .6rem;
 }
 
-.cabecalho span { font-weight: 700; }
+.cabecalho > .largura > span { font-weight: 700; }
+.sessao { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; }
+.sessao p { margin: 0; }
+button.secundario {
+    min-height: 2.25rem;
+    padding: .3rem .8rem;
+    background: transparent;
+    border-color: currentColor;
+    color: inherit;
+}
+button.secundario:hover { background: #d3e3e1; }
+
+[hidden] { display: none !important; }
+
+.entrada { max-width: 46rem; }
+.usuarios {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+    gap: .6rem;
+}
+.usuarios button { display: flex; flex-direction: column; align-items: flex-start; }
+.usuarios small { font-weight: 400; opacity: .85; }
 .cabecalho a { color: inherit; text-underline-offset: .18em; }
 main { padding-block: clamp(1.75rem, 5vw, 3.25rem); }
 
