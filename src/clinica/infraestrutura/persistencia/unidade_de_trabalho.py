@@ -36,18 +36,28 @@ class SQLiteUnidadeDeTrabalho(UnidadeDeTrabalho):
     ``with`` tem a sua conexão e a sua transação.
 
     Sair sem ``commit()``, ou por exceção, desfaz tudo.
+
+    Em ``somente_leitura()`` a transação abre com ``BEGIN`` comum, sem o
+    bloqueio de escrita, e a conexão recusa gravações (``query_only``).
     """
 
     def __init__(self, caminho: str | Path) -> None:
         self._caminho = caminho
         self._local = threading.local()
 
-    def iniciar(self) -> None:
+    def iniciar(self, somente_leitura: bool = False) -> None:
         if getattr(self._local, "conexao", None) is not None:
             raise RuntimeError("Esta unidade de trabalho já está aberta nesta thread.")
         conexao = abrir_conexao(self._caminho)
         try:
-            conexao.execute("BEGIN IMMEDIATE")
+            if somente_leitura:
+                # Leitura não disputa o bloqueio de escrita: com WAL, um BEGIN
+                # comum já enxerga um retrato consistente do banco sem esperar
+                # nem atrasar as reservas. query_only faz qualquer gravação falhar.
+                conexao.execute("PRAGMA query_only = ON")
+                conexao.execute("BEGIN")
+            else:
+                conexao.execute("BEGIN IMMEDIATE")
         except Exception:
             conexao.close()
             raise

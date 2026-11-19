@@ -110,6 +110,21 @@ def test_disponibilidade_reflete_o_que_foi_agendado(agendar, caminho):
     assert len(inicios) == 15  # 8 slots de manhã + 8 de tarde, menos o ocupado
 
 
+def test_disponibilidade_nao_espera_uma_reserva_em_andamento(caminho):
+    """A consulta de disponibilidade só lê: não disputa o bloqueio de escrita (ADR-003)."""
+    reserva = abrir_conexao(caminho)
+    try:
+        reserva.execute("BEGIN IMMEDIATE")  # outra requisição segurando o bloqueio de escrita
+        (resultado,) = ConsultarDisponibilidade(SQLiteUnidadeDeTrabalho(caminho)).executar(
+            TERCA.date(), profissional_id=10
+        )
+    finally:
+        reserva.execute("ROLLBACK")
+        reserva.close()
+
+    assert len(resultado.slots) == 16
+
+
 def _disparar_em_paralelo(tarefas):
     """Executa as tarefas ao mesmo tempo e devolve o resultado (ou a exceção) de cada uma."""
     largada = threading.Barrier(len(tarefas))

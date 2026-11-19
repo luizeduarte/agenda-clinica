@@ -1,4 +1,6 @@
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Self
 
 from clinica.modulos.agenda.portas.agenda_repositorio import AgendaRepositorio
@@ -51,13 +53,30 @@ class UnidadeDeTrabalho(ABC):
         return self
 
     def __exit__(self, tipo_exc, exc, tb) -> None:
+        self._encerrar()
+
+    @contextmanager
+    def somente_leitura(self) -> Iterator[Self]:
+        """Bloco só de leitura: ``with uow.somente_leitura() as uow:``.
+
+        Não toma o bloqueio de escrita, então não atrasa as reservas (ADR-003),
+        e recusa gravações. Usado por consultas como ``ConsultarDisponibilidade``.
+        """
+        self.iniciar(somente_leitura=True)
+        try:
+            yield self
+        finally:
+            self._encerrar()
+
+    def _encerrar(self) -> None:
+        # Desfaz o que não teve commit e libera a conexão, em qualquer saída do bloco.
         try:
             self.rollback()
         finally:
             self._fechar()
 
     @abstractmethod
-    def iniciar(self) -> None: ...
+    def iniciar(self, somente_leitura: bool = False) -> None: ...
 
     @abstractmethod
     def commit(self) -> None: ...

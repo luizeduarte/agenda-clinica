@@ -163,9 +163,10 @@ class UnidadeDeTrabalhoEmMemoria(UnidadeDeTrabalho):
     def notificacoes_pendentes(self):
         return self._notificacoes_pendentes
 
-    def iniciar(self) -> None:
+    def iniciar(self, somente_leitura: bool = False) -> None:
         self._estado = copy.deepcopy(self._banco._mutavel())
         self._aberta = True
+        self.abriu_somente_leitura = somente_leitura
 
     def commit(self) -> None:
         if self._aberta:

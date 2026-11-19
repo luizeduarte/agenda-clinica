@@ -36,7 +36,8 @@ class ConsultarDisponibilidade:
         if (profissional_id is None) == (especialidade is None):
             raise FiltroInvalidoError("Informe profissional_id ou especialidade, mas não ambos.")
 
-        with self._uow as uow:
+        # Só lê: não precisa do bloqueio de escrita das reservas (ADR-003).
+        with self._uow.somente_leitura() as uow:
             if profissional_id is not None:
                 profissional = uow.profissionais.obter_por_id(profissional_id)
                 if profissional is None:

@@ -1,3 +1,5 @@
+import sqlite3
+
 import pytest
 
 from clinica.infraestrutura.persistencia import SQLiteUnidadeDeTrabalho, inicializar_banco
@@ -43,6 +45,24 @@ def test_commit_torna_as_alteracoes_visiveis_para_outras_conexoes(caminho):
         uow.commit()
 
     assert contar(caminho, "consulta") == 1
+
+
+def test_somente_leitura_recusa_gravacao(caminho):
+    with pytest.raises(sqlite3.OperationalError, match="readonly"):
+        with SQLiteUnidadeDeTrabalho(caminho).somente_leitura() as uow:
+            uow.consultas.adicionar(consulta())
+
+    assert contar(caminho, "consulta") == 0
+
+
+def test_somente_leitura_enxerga_o_que_ja_foi_confirmado(caminho):
+    uow = SQLiteUnidadeDeTrabalho(caminho)
+    with uow:
+        uow.consultas.adicionar(consulta())
+        uow.commit()
+
+    with uow.somente_leitura():
+        assert len(uow.consultas.listar_consultas_ativas_paciente(7)) == 1
 
 
 def test_sair_sem_commit_desfaz(caminho):
