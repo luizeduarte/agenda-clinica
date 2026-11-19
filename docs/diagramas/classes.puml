@@ -29,7 +29,9 @@ class Paciente {
   email: String
 }
 class AgendaProfissional {
-  +estaDisponivel(slot: Slot): Boolean
+  +esta_disponivel(slot: Slot): Boolean
+  +verificar_disponivel(slot: Slot)
+  +slots_disponiveis(dia: Date): Slot[*]
 }
 class HorarioAtendimento {
   dia_semana: DiaSemana
@@ -50,12 +52,13 @@ class Consulta {
   +cancelar()
 }
 class AgendaPaciente {
-  +podeAgendar(slot: Slot, especialidade_id: ID): Boolean
+  +pode_agendar(slot: Slot, especialidade_id: ID, agora: DateTime): Boolean
+  +verificar_pode_agendar(slot: Slot, especialidade_id: ID, agora: DateTime)
 }
 class Slot <<valor>> {
   inicio: DateTime
   fim: DateTime
-  +validarGrade(): Boolean
+  +validar_grade(): Boolean
   +sobrepoe(outro: Slot): Boolean
 }
 enum StatusConsulta <<enumeration>> {
@@ -65,8 +68,9 @@ enum StatusConsulta <<enumeration>> {
   REALIZADA
   FALTOU
 }
-interface PoliticaDeCancelamento <<interface>> {
-  +permiteCancelar(consulta: Consulta,\n  ator: Papel, instante: DateTime): Boolean
+class PoliticaDeCancelamento {
+  +permite_cancelar(consulta: Consulta, papel: Papel,\n  agora: DateTime, nome_especialidade: String): Boolean
+  +verificar_pode_cancelar(consulta: Consulta, papel: Papel,\n  agora: DateTime, nome_especialidade: String)
 }
 
 Profissional "0..*" -up- "1" Especialidade

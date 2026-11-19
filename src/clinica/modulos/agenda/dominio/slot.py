@@ -1,0 +1,59 @@
+"""Objeto de valor ``Slot`` (``PeriodoConsulta``): intervalo ``[inicio, fim)``.
+
+Todo slot tem 30 minutos e começa em ``:00`` ou ``:30`` (grade global, RN02).
+Por isso dois slots ou são iguais ou são disjuntos, nunca se sobrepõem em parte.
+É isso que permite ao banco impedir conflito por igualdade do ``inicio``.
+"""
+from dataclasses import dataclass
+from datetime import datetime, time, timedelta
+
+from clinica.compartilhado.erros import SlotInvalidoError
+
+DURACAO = timedelta(minutes=30)
+MINUTOS_DA_GRADE = (0, 30)
+
+
+@dataclass(frozen=True)
+class Slot:
+    inicio: datetime
+    fim: datetime
+
+    def __post_init__(self) -> None:
+        """Valida a grade na criação: não existe ``Slot`` fora dela (RN02)."""
+        if self.inicio.utcoffset() is not None or self.fim.utcoffset() is not None:
+            raise SlotInvalidoError("Informe a data e a hora locais, sem fuso horário.")
+        if not self.esta_na_grade(self.inicio):
+            raise SlotInvalidoError(f"O slot deve começar em :00 ou :30, não em {self.inicio}.")
+        if self.fim - self.inicio != DURACAO:
+            raise SlotInvalidoError("O slot deve durar exatamente 30 minutos.")
+
+    @staticmethod
+    def esta_na_grade(momento: datetime | time) -> bool:
+        """``True`` se o instante (ou horário) cai em ``:00`` ou ``:30`` exatos.
+
+        Única definição da grade (RN02): ``HorarioAtendimento`` também a usa.
+        """
+        return (
+            momento.minute in MINUTOS_DA_GRADE
+            and momento.second == 0
+            and momento.microsecond == 0
+        )
+
+    @classmethod
+    def a_partir_de(cls, inicio: datetime) -> "Slot":
+        # Cria um slot de 30 minutos a partir do instante ``inicio``.
+        try:
+            fim = inicio + DURACAO
+        except OverflowError as erro:
+            raise SlotInvalidoError("Não é possível concluir o slot na data informada.") from erro
+        return cls(inicio, fim)
+
+    def esta_no_futuro(self, agora: datetime) -> bool:
+        return self.inicio > agora
+
+    def sobrepoe(self, outro: "Slot") -> bool:
+        return self.sobrepoe_periodo(outro.inicio, outro.fim)
+
+    def sobrepoe_periodo(self, inicio: datetime, fim: datetime) -> bool:
+        """``True`` se o slot intersecta ``[inicio, fim)``, de qualquer duração (ex.: um bloqueio)."""
+        return self.inicio < fim and inicio < self.fim

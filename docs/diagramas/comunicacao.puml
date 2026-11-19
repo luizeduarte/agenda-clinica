@@ -29,15 +29,15 @@ object ":Consulta" as Cons
 object ":Paciente" as P
 
 P -right- C : → 1: POST /consultas\n← 1.3: HTTP 201
-C -right-> Auth : 1.1 [se aplicável]:\ncontexto :=\nidentificarUsuario()
-C -down-> UC : 1.2: consulta :=\nexecutar(dados)
+C -right-> Auth : 1.1 [se aplicável]:\nusuario :=\nidentificar(credencial)
+C -down-> UC : 1.2: consulta :=\nexecutar(comando)
 
-UC -left-> Horario : 1.2.3: válido := validarGrade()
-UC -right-> UoW : 1.2.1: iniciar()\n1.2.9: commit()
+UC -left-> Horario : 1.2.1: slot :=\na_partir_de(inicio) /\nvalidar_grade()
+UC -right-> UoW : 1.2.2: iniciar()\n1.2.9: commit()
 ' O participante Repositórios agrupa portas distintas para compactar o desenho.
-UC -down-> Repos : 1.2.2: dados :=\ncarregar dados\n1.2.7: salvar(consulta)\n1.2.8: registrar(PENDENTE)
-UC -down-> AP : 1.2.4: disponível :=\nestaDisponivel(slot)
-UC -down-> AC : 1.2.5: apto := podeAgendar(slot,\nespecialidade_id)
+UC -down-> Repos : 1.2.3: dados :=\ncarregar dados\n1.2.7: adicionar(consulta)\n1.2.8: adicionar(pendente)
+UC -down-> AP : 1.2.4: verificar_disponivel(slot)
+UC -down-> AC : 1.2.5: verificar_pode_agendar(slot,\nespecialidade_id, agora)
 UC -down-> Cons : 1.2.6: «create»\nAGENDADA
 
 ' As ligações ocultas alinham os participantes abaixo do caso de uso.

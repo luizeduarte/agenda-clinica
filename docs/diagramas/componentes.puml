@@ -19,8 +19,8 @@ component "Cliente web" as Web
 
 package "Backend — monólito modular" {
   component "API REST\nAgendamentoController" as API
-  component "Consultas\nAgendarConsulta\nAgendaPaciente (domínio)" as Consultas
-  component "Agenda\nConsultarDisponibilidade" as Agenda
+  component "Consultas\nAgendarConsulta\nConsultarDisponibilidade\nAgendaPaciente (domínio)" as Consultas
+  component "Agenda\nAgendaProfissional e Slot (domínio)" as Agenda
   component Cadastros
   component "Notificações" as Notificacoes
   component "Autenticação" as Autenticacao

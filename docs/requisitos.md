@@ -44,6 +44,7 @@ O **sistema proposto** contempla as funcionalidades especificadas abaixo. Já o 
 - **RN06 - Reagendamento:** a alteração de horário deve verificar a disponibilidade do novo horário e garantir que a consulta original seja preservada intacta caso o novo agendamento não possa ser concluído.
 - **RN07 - Confirmação:** criar um agendamento e receber a confirmação do paciente são operações distintas. Caso o paciente não confirme antecipadamente, a consulta permanece válida e reservando o horário no estado `AGENDADA` até que seja confirmada, cancelada ou encerrada como realizada/falta.
 - **RN08 - Limite de agendamentos do paciente:** para evitar acaparamento da agenda, um paciente pode manter no máximo **2 consultas ativas no mesmo dia** e no máximo **1 consulta ativa futura por especialidade**.
+- **RN09 - Horários futuros:** só podem ser agendados, e só são listados como disponíveis, os slots que ainda não começaram.
 
 ## 5. Restrições
 

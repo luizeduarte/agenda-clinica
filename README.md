@@ -41,7 +41,63 @@ dessas escolhas estão na [proposta arquitetural](docs/arquitetura.md), nos
 [trade-offs](docs/tradeoffs.md) e nos [ADRs](docs/adr/).
 
 ## Protótipo
-TBD
+
+O protótipo implementa a fatia vertical descrita acima: consulta de disponibilidade, agendamento e envio posterior das notificações.
+
+### Executar
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+```
+
+```bash
+uvicorn --factory clinica.main:criar_aplicacao
+```
+
+Na primeira execução, o banco `clinica.db` é criado e populado com dados de
+exemplo. Para recomeçar do zero, basta apagar esse arquivo (ou indicar outro
+caminho na variável `CLINICA_DB`).
+
+- **Página de demonstração:** http://127.0.0.1:8000/. Escolha com quem entrar
+  (login simulado), busque horários e agende.
+- **Documentação interativa da API (Swagger):** http://127.0.0.1:8000/docs.
+
+### Usuários de exemplo
+
+No sistema real, a identificação seria feita pelo serviço de autenticação da universidade. No protótipo, cada usuário é um token fixo, enviado no cabeçalho `Authorization: Bearer <token>`:
+
+| Token | Usuário | Papel |
+|---|---|---|
+| `token-ana` | Ana (id 7) | Paciente |
+| `token-bia` | Bia (id 8) | Paciente |
+| `token-dr-joao` | Dr. João (id 10), Clínica Geral | Profissional |
+| `token-dra-marta` | Dra. Marta (id 11), Odontologia | Profissional |
+
+Pelo terminal:
+
+```bash
+# Consultar horários disponíveis (RF02)
+curl "localhost:8000/disponibilidade?dia=2026-12-01&profissional_id=10" \
+  -H "Authorization: Bearer token-ana"
+
+# Agendar uma consulta (RF03)
+curl -X POST localhost:8000/consultas \
+  -H "Authorization: Bearer token-ana" \
+  -H "Content-Type: application/json" \
+  -d '{"profissional_id": 10, "inicio": "2026-12-01T10:00:00"}'
+```
+
+### Processar as notificações
+
+O agendamento apenas registra a notificação pendente. o envio é feito por um processo separado:
+
+```bash
+# Simula falha no canal: a notificação fica em FALHA, disponível para reenvio
+python -m clinica.processar_notificacoes --simular-falha
+
+# Reenvia: a notificação passa para ENVIADA
+python -m clinica.processar_notificacoes
 
 ## Diagramas
 TBD
