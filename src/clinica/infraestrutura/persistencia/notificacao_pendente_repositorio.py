@@ -48,8 +48,7 @@ class SQLiteNotificacaoPendenteRepositorio(NotificacaoPendenteRepositorio):
                 pendente.ultimo_erro,
             ),
         )
-        pendente.id = cursor.lastrowid
-        return pendente
+        return pendente.com_id(cursor.lastrowid)
 
     def listar_para_envio(self, limite: int = 50) -> list[NotificacaoPendente]:
         linhas = self._con.execute(

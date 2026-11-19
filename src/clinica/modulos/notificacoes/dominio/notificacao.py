@@ -46,24 +46,60 @@ class Notificacao:
         )
 
 
-@dataclass
 class NotificacaoPendente:
     """Linha da tabela de pendências (Transactional Outbox).
 
     Permanece ``PENDENTE`` ou ``FALHA`` até o envio ter sucesso (reenvio).
+    O estado só muda por ``marcar_enviada`` e ``registrar_falha``; ``id`` é
+    ``None`` até ser persistida, e o repositório devolve uma cópia com o
+    ``id`` gerado (``com_id``).
     """
 
-    notificacao: Notificacao
-    estado: EstadoNotificacao = EstadoNotificacao.PENDENTE
-    tentativas: int = 0
-    ultimo_erro: str | None = None
-    id: int | None = None
+    def __init__(
+        self,
+        notificacao: Notificacao,
+        estado: EstadoNotificacao = EstadoNotificacao.PENDENTE,
+        tentativas: int = 0,
+        ultimo_erro: str | None = None,
+        id: int | None = None,
+    ) -> None:
+        self._notificacao = notificacao
+        self._estado = estado
+        self._tentativas = tentativas
+        self._ultimo_erro = ultimo_erro
+        self._id = id
+
+    @property
+    def notificacao(self) -> Notificacao:
+        return self._notificacao
+
+    @property
+    def estado(self) -> EstadoNotificacao:
+        return self._estado
+
+    @property
+    def tentativas(self) -> int:
+        return self._tentativas
+
+    @property
+    def ultimo_erro(self) -> str | None:
+        return self._ultimo_erro
+
+    @property
+    def id(self) -> int | None:
+        return self._id
+
+    def com_id(self, id: int) -> "NotificacaoPendente":
+        """Cópia com o ``id`` gerado pela persistência."""
+        return NotificacaoPendente(
+            self._notificacao, self._estado, self._tentativas, self._ultimo_erro, id
+        )
 
     def marcar_enviada(self) -> None:
         """Registra que o envio teve sucesso (ASR-03)."""
-        self.tentativas += 1
-        self.estado = EstadoNotificacao.ENVIADA
-        self.ultimo_erro = None
+        self._tentativas += 1
+        self._estado = EstadoNotificacao.ENVIADA
+        self._ultimo_erro = None
 
     def registrar_falha(self, erro: str) -> None:
         """Registra uma tentativa frustrada mantendo a pendência elegível para reenvio.
@@ -71,8 +107,14 @@ class NotificacaoPendente:
         Se outra execução já a tinha enviado, conta a tentativa mas continua
         ``ENVIADA``: voltar para ``FALHA`` faria a mensagem ser enviada de novo.
         """
-        self.tentativas += 1
-        if self.estado == EstadoNotificacao.ENVIADA:
+        self._tentativas += 1
+        if self._estado == EstadoNotificacao.ENVIADA:
             return
-        self.estado = EstadoNotificacao.FALHA
-        self.ultimo_erro = erro
+        self._estado = EstadoNotificacao.FALHA
+        self._ultimo_erro = erro
+
+    def __repr__(self) -> str:
+        return (
+            f"NotificacaoPendente(id={self._id}, estado={self._estado.value},"
+            f" tentativas={self._tentativas}, ultimo_erro={self._ultimo_erro!r})"
+        )

@@ -8,7 +8,10 @@ class NotificacaoPendenteRepositorio(ABC):
 
     @abstractmethod
     def adicionar(self, pendente: NotificacaoPendente) -> NotificacaoPendente:
-        """Registra a pendência; participa da transação da ``UnidadeDeTrabalho``."""
+        """Registra a pendência e devolve uma cópia com o ``id`` gerado.
+
+        Participa da transação da ``UnidadeDeTrabalho``.
+        """
 
     @abstractmethod
     def listar_para_envio(self, limite: int = 50) -> list[NotificacaoPendente]:

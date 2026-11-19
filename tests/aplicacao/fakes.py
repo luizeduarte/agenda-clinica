@@ -116,7 +116,7 @@ class NotificacaoPendenteRepositorioEmMemoria(NotificacaoPendenteRepositorio):
         self._b = banco
 
     def adicionar(self, pendente):
-        pendente.id = self._b.novo_id()
+        pendente = pendente.com_id(self._b.novo_id())
         self._b.pendentes.append(pendente)
         return pendente
 
@@ -131,7 +131,7 @@ class NotificacaoPendenteRepositorioEmMemoria(NotificacaoPendenteRepositorio):
         return next((p for p in self._b.pendentes if p.id == pendente_id), None)
 
     def atualizar(self, pendente):
-        pass
+        self._b.pendentes = [pendente if p.id == pendente.id else p for p in self._b.pendentes]
 
 
 class UnidadeDeTrabalhoEmMemoria(UnidadeDeTrabalho):
