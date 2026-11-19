@@ -5,7 +5,7 @@ Por isso dois slots ou são iguais ou são disjuntos, nunca se sobrepõem em par
 É isso que permite ao banco impedir conflito por igualdade do ``inicio``.
 """
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 
 from clinica.compartilhado.erros import SlotInvalidoError
 
@@ -20,14 +20,17 @@ class Slot:
 
     def __post_init__(self) -> None:
         """Valida a grade na criação: não existe ``Slot`` fora dela (RN02)."""
-        if not self._esta_na_grade(self.inicio):
+        if not self.esta_na_grade(self.inicio):
             raise SlotInvalidoError(f"O slot deve começar em :00 ou :30, não em {self.inicio}.")
         if self.fim - self.inicio != DURACAO:
             raise SlotInvalidoError("O slot deve durar exatamente 30 minutos.")
 
     @staticmethod
-    def _esta_na_grade(momento: datetime) -> bool:
-        """``True`` se o instante cai em ``:00`` ou ``:30`` exatos."""
+    def esta_na_grade(momento: datetime | time) -> bool:
+        """``True`` se o instante (ou horário) cai em ``:00`` ou ``:30`` exatos.
+
+        Única definição da grade (RN02): ``HorarioAtendimento`` também a usa.
+        """
         return (
             momento.minute in MINUTOS_DA_GRADE
             and momento.second == 0
@@ -40,4 +43,8 @@ class Slot:
         return cls(inicio, inicio + DURACAO)
 
     def sobrepoe(self, outro: "Slot") -> bool:
-        return self.inicio < outro.fim and outro.inicio < self.fim
+        return self.sobrepoe_periodo(outro.inicio, outro.fim)
+
+    def sobrepoe_periodo(self, inicio: datetime, fim: datetime) -> bool:
+        """``True`` se o slot intersecta ``[inicio, fim)``, de qualquer duração (ex.: um bloqueio)."""
+        return self.inicio < fim and inicio < self.fim

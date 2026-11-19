@@ -1,3 +1,4 @@
+from dataclasses import FrozenInstanceError
 from datetime import datetime
 
 import pytest
@@ -30,6 +31,11 @@ class TestConsulta:
         c = consulta(1, 10)
         assert c.status == StatusConsulta.AGENDADA
         assert c.esta_ativa
+
+    def test_estado_nao_pode_ser_alterado_por_fora(self):
+        c = consulta(1, 10)
+        with pytest.raises(FrozenInstanceError):
+            c.status = StatusConsulta.CANCELADA
 
 
 class TestAgendaPaciente:

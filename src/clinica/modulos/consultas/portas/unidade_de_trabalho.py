@@ -24,11 +24,27 @@ class UnidadeDeTrabalho(ABC):
     Sair do ``with`` sem ``commit()``, ou por exceção, desfaz tudo (rollback).
     """
 
-    consultas: ConsultaRepositorio
-    agendas: AgendaRepositorio
-    pacientes: PacienteRepositorio
-    profissionais: ProfissionalRepositorio
-    notificacoes_pendentes: NotificacaoPendenteRepositorio
+    # Repositórios que participam da transação. São abstratos para que uma
+    # implementação que esqueça algum falhe já ao ser criada.
+    @property
+    @abstractmethod
+    def consultas(self) -> ConsultaRepositorio: ...
+
+    @property
+    @abstractmethod
+    def agendas(self) -> AgendaRepositorio: ...
+
+    @property
+    @abstractmethod
+    def pacientes(self) -> PacienteRepositorio: ...
+
+    @property
+    @abstractmethod
+    def profissionais(self) -> ProfissionalRepositorio: ...
+
+    @property
+    @abstractmethod
+    def notificacoes_pendentes(self) -> NotificacaoPendenteRepositorio: ...
 
     def __enter__(self) -> Self:
         self.iniciar()

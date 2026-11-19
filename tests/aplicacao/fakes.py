@@ -4,6 +4,7 @@ Imitam o comportamento relevante do banco: o índice único parcial por
 ``(participante, inicio)`` das consultas ativas e o rollback ao sair sem commit.
 """
 import copy
+from dataclasses import replace
 from datetime import datetime
 
 from clinica.compartilhado.erros import ConflitoDePersistenciaError
@@ -59,7 +60,7 @@ class ConsultaRepositorioEmMemoria(ConsultaRepositorio):
                         raise ConflitoDePersistenciaError("profissional")
                     if c.paciente_id == consulta.paciente_id:
                         raise ConflitoDePersistenciaError("paciente")
-        consulta.id = self._b.novo_id()
+        consulta = replace(consulta, id=self._b.novo_id())
         self._b.consultas.append(consulta)
         return consulta
 
@@ -134,13 +135,33 @@ class UnidadeDeTrabalhoEmMemoria(UnidadeDeTrabalho):
 
     def __init__(self, banco: BancoEmMemoria) -> None:
         self._banco = banco
-        self.consultas = ConsultaRepositorioEmMemoria(banco)
-        self.agendas = AgendaRepositorioEmMemoria(banco)
-        self.pacientes = PacienteRepositorioEmMemoria(banco)
-        self.profissionais = ProfissionalRepositorioEmMemoria(banco)
-        self.notificacoes_pendentes = NotificacaoPendenteRepositorioEmMemoria(banco)
+        self._consultas = ConsultaRepositorioEmMemoria(banco)
+        self._agendas = AgendaRepositorioEmMemoria(banco)
+        self._pacientes = PacienteRepositorioEmMemoria(banco)
+        self._profissionais = ProfissionalRepositorioEmMemoria(banco)
+        self._notificacoes_pendentes = NotificacaoPendenteRepositorioEmMemoria(banco)
         self._estado = None
         self._aberta = False
+
+    @property
+    def consultas(self):
+        return self._consultas
+
+    @property
+    def agendas(self):
+        return self._agendas
+
+    @property
+    def pacientes(self):
+        return self._pacientes
+
+    @property
+    def profissionais(self):
+        return self._profissionais
+
+    @property
+    def notificacoes_pendentes(self):
+        return self._notificacoes_pendentes
 
     def iniciar(self) -> None:
         self._estado = copy.deepcopy(self._banco._mutavel())

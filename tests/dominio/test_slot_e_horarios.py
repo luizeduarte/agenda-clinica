@@ -71,20 +71,26 @@ class TestHorarioAtendimento:
 
     def test_rejeita_periodos_sobrepostos_no_mesmo_dia(self):
         with pytest.raises(HorarioDeAtendimentoInvalidoError):
-            AgendaProfissional.validar_grade_semanal(
+            AgendaProfissional(
+                10,
                 [
                     HorarioAtendimento(1, time(8, 0), time(12, 0)),
                     HorarioAtendimento(1, time(11, 30), time(14, 0)),
-                ]
+                ],
+                bloqueios=[],
+                slots_ocupados=[],
             )
 
     def test_aceita_periodos_encostados_e_em_dias_diferentes(self):
-        AgendaProfissional.validar_grade_semanal(
+        AgendaProfissional(
+            10,
             [
                 HorarioAtendimento(1, time(8, 0), time(12, 0)),
                 HorarioAtendimento(1, time(12, 0), time(14, 0)),
                 HorarioAtendimento(2, time(8, 0), time(12, 0)),
-            ]
+            ],
+            bloqueios=[],
+            slots_ocupados=[],
         )
 
 

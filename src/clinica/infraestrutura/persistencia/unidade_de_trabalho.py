@@ -83,27 +83,28 @@ class SQLiteUnidadeDeTrabalho(UnidadeDeTrabalho):
 
     # --- repositórios (todos sobre a conexão desta thread) -----------------
 
-    def _obter_repositorio(self, nome: str):
+    def _da_thread(self) -> threading.local:
+        """Estado desta thread; só existe dentro do bloco ``with``."""
         if getattr(self._local, "conexao", None) is None:
             raise RuntimeError("Use a unidade de trabalho dentro de um bloco 'with'.")
-        return getattr(self._local, nome)
+        return self._local
 
     @property
     def consultas(self) -> ConsultaRepositorio:
-        return self._obter_repositorio("consultas")
+        return self._da_thread().consultas
 
     @property
     def agendas(self) -> AgendaRepositorio:
-        return self._obter_repositorio("agendas")
+        return self._da_thread().agendas
 
     @property
     def pacientes(self) -> PacienteRepositorio:
-        return self._obter_repositorio("pacientes")
+        return self._da_thread().pacientes
 
     @property
     def profissionais(self) -> ProfissionalRepositorio:
-        return self._obter_repositorio("profissionais")
+        return self._da_thread().profissionais
 
     @property
     def notificacoes_pendentes(self) -> NotificacaoPendenteRepositorio:
-        return self._obter_repositorio("notificacoes_pendentes")
+        return self._da_thread().notificacoes_pendentes

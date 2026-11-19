@@ -19,6 +19,10 @@ class ConflitoDoPacienteError(ErroDeDominio):
 class LimiteDoPacienteExcedidoError(ErroDeDominio):
     """Excede 2 consultas ativas no dia ou 1 futura por especialidade (RN08)."""
 
+class FiltroInvalidoError(ErroDeDominio):
+    """Consulta de disponibilidade sem exatamente um filtro (profissional ou especialidade)."""
+
+
 class EntidadeNaoEncontradaError(ErroDeDominio):
     """Paciente, profissional ou consulta inexistente."""
 

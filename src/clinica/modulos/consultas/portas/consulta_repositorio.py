@@ -9,7 +9,7 @@ class ConsultaRepositorio(ABC):
 
     @abstractmethod
     def adicionar(self, consulta: Consulta) -> Consulta:
-        """Grava a consulta e devolve-a com ``id``."""
+        """Grava a consulta e devolve uma cópia dela com o ``id`` gerado."""
 
     @abstractmethod
     def listar_consultas_ativas_profissional(

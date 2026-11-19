@@ -10,7 +10,7 @@ requisição tem a sua transação.
 """
 from datetime import date
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header
 
 from clinica.api.erros import (
     RESPOSTA_400,
@@ -59,12 +59,7 @@ class AgendamentoController:
         authorization: str | None = Header(default=None),
     ):
         self._identificar(authorization)
-        try:
-            resultado = self._consultar_disponibilidade.executar(
-                dia, profissional_id, especialidade
-            )
-        except ValueError as erro:
-            raise HTTPException(status_code=400, detail=str(erro)) from erro
+        resultado = self._consultar_disponibilidade.executar(dia, profissional_id, especialidade)
         return [DisponibilidadeResposta.de(item) for item in resultado]
 
     def agendar_consulta(

@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 from datetime import date
 
-from clinica.compartilhado.erros import EntidadeNaoEncontradaError
+from clinica.compartilhado.erros import EntidadeNaoEncontradaError, FiltroInvalidoError
 from clinica.modulos.agenda.dominio.slot import Slot
 from clinica.modulos.cadastros.dominio.cadastros import Profissional
 from clinica.modulos.consultas.aplicacao.agenda_do_profissional import (
@@ -30,11 +30,11 @@ class ConsultarDisponibilidade:
         """Lista os slots livres em ``dia``, de um profissional ou de uma especialidade.
 
         Raises:
-            ValueError: não informou exatamente um dos dois filtros.
+            FiltroInvalidoError: não informou exatamente um dos dois filtros.
             EntidadeNaoEncontradaError: ``profissional_id`` inexistente.
         """
         if (profissional_id is None) == (especialidade is None):
-            raise ValueError("Informe profissional_id ou especialidade, mas não ambos.")
+            raise FiltroInvalidoError("Informe profissional_id ou especialidade, mas não ambos.")
 
         with self._uow as uow:
             if profissional_id is not None:

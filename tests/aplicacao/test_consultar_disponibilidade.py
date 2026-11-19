@@ -1,6 +1,8 @@
+from dataclasses import replace
+
 import pytest
 
-from clinica.compartilhado.erros import EntidadeNaoEncontradaError
+from clinica.compartilhado.erros import EntidadeNaoEncontradaError, FiltroInvalidoError
 from clinica.modulos.autenticacao.portas.servico_autenticacao import Papel, Usuario
 from clinica.modulos.agenda.dominio.horarios import Bloqueio
 from clinica.modulos.consultas.aplicacao.agendar_consulta import (
@@ -41,11 +43,12 @@ def test_desconta_consultas_ativas_e_bloqueios(consultar, uow, banco):
     assert inicios(resultado) == [dt(8, 0), dt(10, 0), dt(10, 30), dt(11, 0), dt(11, 30)]
 
 
-def test_consulta_cancelada_libera_o_slot(consultar, uow):
-    consulta = AgendarConsulta(uow, relogio=lambda: AGORA).executar(
+def test_consulta_cancelada_libera_o_slot(consultar, uow, banco):
+    AgendarConsulta(uow, relogio=lambda: AGORA).executar(
         AgendarConsultaComando(Usuario(7, Papel.PACIENTE), 10, dt(8, 30))
     )
-    consulta.status = StatusConsulta.CANCELADA  # o cancelamento em si está fora do recorte
+    # O cancelamento em si está fora do recorte: simula a consulta já cancelada no banco.
+    banco.consultas = [replace(c, status=StatusConsulta.CANCELADA) for c in banco.consultas]
 
     (resultado,) = consultar.executar(TERCA, profissional_id=10)
 
@@ -84,5 +87,5 @@ def test_profissional_inexistente(consultar):
 
 @pytest.mark.parametrize("filtros", [{}, {"profissional_id": 10, "especialidade": "Odontologia"}])
 def test_exige_exatamente_um_filtro(consultar, filtros):
-    with pytest.raises(ValueError):
+    with pytest.raises(FiltroInvalidoError):
         consultar.executar(TERCA, **filtros)

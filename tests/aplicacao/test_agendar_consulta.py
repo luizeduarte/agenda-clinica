@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pytest
 
 from clinica.compartilhado.erros import (
@@ -49,8 +51,9 @@ class TestFluxoPrincipal:
         assert "10:00" in pendente.notificacao.texto
 
     def test_horario_cancelado_pode_ser_reagendado_por_outro_paciente(self, agendar, banco):
-        primeira = agendar.executar(comando(paciente=7))
-        primeira.status = StatusConsulta.CANCELADA  # o cancelamento em si está fora do recorte
+        agendar.executar(comando(paciente=7))
+        # O cancelamento em si está fora do recorte: simula a consulta já cancelada no banco.
+        banco.consultas = [replace(c, status=StatusConsulta.CANCELADA) for c in banco.consultas]
 
         segunda = agendar.executar(comando(paciente=8))
 

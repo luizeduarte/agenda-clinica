@@ -1,4 +1,5 @@
 import sqlite3
+from dataclasses import replace
 from datetime import datetime
 
 from clinica.compartilhado.erros import ConflitoDePersistenciaError
@@ -54,8 +55,7 @@ class SQLiteConsultaRepositorio(ConsultaRepositorio):
             )
         except sqlite3.IntegrityError as erro:
             raise self._traduzir(erro) from erro
-        consulta.id = cursor.lastrowid
-        return consulta
+        return replace(consulta, id=cursor.lastrowid)
 
     def listar_consultas_ativas_profissional(
         self, profissional_id: int, inicio: datetime, fim: datetime

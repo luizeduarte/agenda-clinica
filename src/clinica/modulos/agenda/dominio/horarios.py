@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time
 
 from clinica.compartilhado.erros import HorarioDeAtendimentoInvalidoError
-from clinica.modulos.agenda.dominio.slot import DURACAO, MINUTOS_DA_GRADE, Slot
+from clinica.modulos.agenda.dominio.slot import DURACAO, Slot
 
 
 @dataclass(frozen=True)
@@ -17,16 +17,12 @@ class HorarioAtendimento:
     hora_inicio: time
     hora_fim: time
 
-    @staticmethod
-    def _hora_na_grade(hora: time) -> bool:
-        return hora.minute in MINUTOS_DA_GRADE and hora.second == 0 and hora.microsecond == 0
-
     def __post_init__(self) -> None:
         if not 0 <= self.dia_semana <= 6:
             raise HorarioDeAtendimentoInvalidoError("dia_semana deve estar entre 0 e 6.")
         if self.hora_inicio >= self.hora_fim:
             raise HorarioDeAtendimentoInvalidoError("O período deve terminar depois de começar.")
-        if not (self._hora_na_grade(self.hora_inicio) and self._hora_na_grade(self.hora_fim)):
+        if not (Slot.esta_na_grade(self.hora_inicio) and Slot.esta_na_grade(self.hora_fim)):
             raise HorarioDeAtendimentoInvalidoError(
                 "O período deve começar e terminar em :00 ou :30."
             )
@@ -56,4 +52,4 @@ class Bloqueio:
             raise HorarioDeAtendimentoInvalidoError("O bloqueio deve terminar depois de começar.")
 
     def intersecta(self, slot: Slot) -> bool:
-        return self.inicio < slot.fim and slot.inicio < self.fim
+        return slot.sobrepoe_periodo(self.inicio, self.fim)

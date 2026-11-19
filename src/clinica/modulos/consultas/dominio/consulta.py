@@ -17,9 +17,13 @@ class StatusConsulta(str, Enum):
 STATUS_ATIVOS = frozenset({StatusConsulta.AGENDADA, StatusConsulta.CONFIRMADA})
 
 
-@dataclass
+@dataclass(frozen=True)
 class Consulta:
     """Nasce ``AGENDADA`` (RN07). ``id`` é ``None`` até ser persistida.
+
+    É imutável: nenhum código de fora altera seu estado diretamente. O
+    repositório devolve uma cópia com o ``id`` gerado, e as transições de
+    estado (fora do recorte do protótipo) também devolverão uma nova consulta.
 
     ``especialidade_id`` é copiado do profissional no momento do agendamento.
     Assim ``AgendaPaciente`` aplica o limite por especialidade (RN08) usando
