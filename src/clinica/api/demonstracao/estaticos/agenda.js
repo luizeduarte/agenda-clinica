@@ -15,6 +15,8 @@ const confirmar = document.querySelector("#confirmar");
 const mensagemHorarios = document.querySelector("#mensagem-horarios");
 const mensagemReserva = document.querySelector("#mensagem-reserva");
 let carregando = false;
+let agendando = false;
+let buscaPendente = null;
 let sessao = null; // { token, nome, papel }: o que um login real deixaria no cliente
 
 function lerSessao() {
@@ -62,6 +64,7 @@ function selecionado() {
 
 function definirCarregamento(ativo) {
     carregando = ativo;
+    sair.disabled = agendando;
     filtros.disabled = ativo;
     escolha.disabled = ativo;
     escolha.setAttribute("aria-busy", String(ativo));
@@ -129,14 +132,30 @@ function mostrarHorarios(disponibilidade) {
 }
 
 async function consultarHorarios() {
+    const controlador = new AbortController();
+    const sessaoDaBusca = sessao;
+    buscaPendente = controlador;
+    definirCarregamento(true);
     limparHorarios();
     mensagem(mensagemHorarios, "Consultando disponibilidade…");
     const opcao = filtro.selectedOptions[0];
     const parametros = new URLSearchParams({ dia: dia.value, [opcao.dataset.parametro]: opcao.value });
     try {
-        mostrarHorarios(await chamarApi(`/disponibilidade?${parametros}`, sessao.token));
+        const disponibilidade = await chamarApi(`/disponibilidade?${parametros}`, sessaoDaBusca.token, {
+            signal: controlador.signal,
+        });
+        if (buscaPendente === controlador && sessao === sessaoDaBusca) {
+            mostrarHorarios(disponibilidade);
+        }
     } catch (erro) {
-        mensagem(mensagemHorarios, erro.message, "erro");
+        if (buscaPendente === controlador && sessao === sessaoDaBusca && !controlador.signal.aborted) {
+            mensagem(mensagemHorarios, erro.message, "erro");
+        }
+    } finally {
+        if (buscaPendente === controlador) {
+            buscaPendente = null;
+            definirCarregamento(false);
+        }
     }
 }
 
@@ -151,13 +170,8 @@ busca.addEventListener("submit", async evento => {
     if (carregando) {
         return;
     }
-    definirCarregamento(true);
     mensagem(mensagemReserva, "");
-    try {
-        await consultarHorarios();
-    } finally {
-        definirCarregamento(false);
-    }
+    await consultarHorarios();
 });
 
 reserva.addEventListener("change", () => {
@@ -171,10 +185,12 @@ reserva.addEventListener("submit", async evento => {
     if (carregando || !slot) {
         return;
     }
+    agendando = true;
     definirCarregamento(true);
     mensagem(mensagemReserva, "Registrando agendamento…");
+    let consulta;
     try {
-        const consulta = await chamarApi("/consultas", sessao.token, {
+        consulta = await chamarApi("/consultas", sessao.token, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ profissional_id: Number(slot.dataset.profissionalId), inicio: slot.value }),
@@ -182,11 +198,14 @@ reserva.addEventListener("submit", async evento => {
         const data = consulta.inicio.slice(0, 10).split("-").reverse().join("/");
         const hora = consulta.inicio.slice(11, 16);
         mensagem(mensagemReserva, `Agendamento registrado (#${consulta.id}) com ${slot.dataset.profissionalNome} em ${data} às ${hora}.`, "sucesso");
-        await consultarHorarios();
     } catch (erro) {
         mensagem(mensagemReserva, erro.message, "erro");
     } finally {
+        agendando = false;
         definirCarregamento(false);
+    }
+    if (consulta) {
+        await consultarHorarios();
     }
 });
 
@@ -202,6 +221,13 @@ entrada.addEventListener("click", evento => {
 });
 
 sair.addEventListener("click", () => {
+    if (agendando) {
+        return;
+    }
+    const buscaAnterior = buscaPendente;
+    buscaPendente = null;
+    buscaAnterior?.abort();
+    definirCarregamento(false);
     sessao = null;
     guardarSessao(null);
     limparHorarios();
